@@ -2,7 +2,7 @@
 
 ## Purpose
 
-AdfAgentMonitor is a .NET 9 multi-agent system that continuously monitors Azure Data Factory (ADF) pipeline runs, automatically diagnoses failures using AI reasoning (Semantic Kernel), proposes and — where safe — executes remediations, and keeps human operators informed and in control through Microsoft Teams Adaptive Card approval workflows.
+AdfAgentMonitor is a .NET 9 multi-agent system that continuously monitors Azure Data Factory (ADF) pipeline runs, automatically diagnoses failures using AI reasoning (Semantic Kernel), proposes and — where safe — executes remediations, and keeps human operators informed and in control through HTML email notifications and a Blazor WebAssembly approval dashboard.
 
 The system is designed around a **shared-state agent model**: agents do not call each other directly. Instead, each agent reads from and writes to a central `PipelineRunState` table in SQL Server. A Hangfire scheduler drives each agent on its own cadence. This decoupling means any agent can be paused, redeployed, or replaced without affecting the others.
 
@@ -20,11 +20,11 @@ The system is designed around a **shared-state agent model**: agents do not call
 └───────▲────────────────▲─────────────────▲────────────────▲────────┘
         │                │                 │                │
   MonitorAgent    DiagnosticsAgent      FixAgent      NotifierAgent
-  (polls ADF)    (SK reasoning)      (SK + Azure)    (Teams cards)
+  (polls ADF)    (SK reasoning)      (SK + Azure)    (HTML email)
                                            │
                                     ┌──────▼──────┐
                                     │ HumanApproval│
-                                    │  (Teams AC) │
+                                    │ HTML Email  │
                                     └─────────────┘
 ```
 
@@ -35,7 +35,7 @@ The system is designed around a **shared-state agent model**: agents do not call
 | **MonitorAgent** | Hangfire recurring (e.g. every 2 min) | — | Creates `PipelineRunState` rows for newly failed runs | ADF Management SDK |
 | **DiagnosticsAgent** | Hangfire recurring, filters `Status = Detected` | `PipelineRunState`, ADF run logs | Updates state to `Diagnosing` → `Diagnosed`; writes `DiagnosisResult` JSON | ADF SDK (log fetch), Semantic Kernel |
 | **FixAgent** | Hangfire recurring, filters `Status = Approved` OR auto-safe runs | `PipelineRunState`, `DiagnosisResult` | Updates state to `Remediating` → `Remediated` or `Failed`; writes `RemediationLog` | ADF SDK (rerun/cancel), Azure SDK |
-| **NotifierAgent** | Hangfire recurring, filters `Status = Diagnosed` | `PipelineRunState`, `DiagnosisResult` | Updates state to `PendingApproval`; writes `ApprovalRequestId` | Microsoft Graph API (Teams Adaptive Cards) |
+| **NotifierAgent** | Hangfire recurring, filters `Status = Diagnosed` | `PipelineRunState`, `DiagnosisResult` | Updates state to `PendingApproval` | SMTP email via `IEmailNotifierService` (MailKit) |
 
 ### State Machine
 
@@ -59,7 +59,7 @@ Each transition is written as a single EF Core transaction that also appends a r
 | Background scheduling | Hangfire (`Hangfire.AspNetCore`, `Hangfire.SqlServer`) |
 | Persistence | SQL Server via Entity Framework Core 9 |
 | Azure integration | `Azure.ResourceManager.DataFactory`, `Azure.Identity` |
-| Teams notifications | Microsoft Graph SDK (`Microsoft.Graph`) |
+| Email notifications | MailKit (`MailKit`) — SMTP with HTML email bodies |
 | In-process messaging | MediatR (`MediatR`) |
 | HTTP API | ASP.NET Core 9 minimal APIs |
 | Error handling | `Result<T>` pattern (no exceptions for control flow) |
@@ -75,7 +75,7 @@ AdfAgentMonitor.sln
 └── src/
     ├── AdfAgentMonitor.Core            # Shared kernel — no external NuGet deps
     ├── AdfAgentMonitor.Agents          # Agent implementations (Semantic Kernel)
-    ├── AdfAgentMonitor.Infrastructure  # EF Core, ADF SDK, Graph API, Hangfire storage
+    ├── AdfAgentMonitor.Infrastructure  # EF Core, ADF SDK, MailKit, Hangfire storage
     ├── AdfAgentMonitor.Worker          # Hangfire host + job registrations only
     ├── AdfAgentMonitor.Api             # Webhook receiver + dashboard read endpoints
     └── AdfAgentMonitor.Dashboard       # Blazor WebAssembly PWA — monitoring UI + approval interface
@@ -106,7 +106,8 @@ The shared kernel. Zero external NuGet dependencies. Everything else depends on 
 - `PipelineRunState` — the central shared-state entity; owns the status field and all FK references
 - `DiagnosisResult` — structured output from DiagnosticsAgent (cause category, confidence, affected datasets, root cause narrative)
 - `RemediationProposal` — a ranked list of candidate fixes with risk levels
-- `ApprovalRequest` / `ApprovalOutcome` — Teams card correlation identifiers and results
+- `ApprovalRequest` / `ApprovalOutcome` — approval correlation identifiers and results
+- `NotificationSettings` — single-row entity persisting the recipient email address
 - `AuditEntry` — append-only log row (who/what/when/old state/new state)
 
 **Interfaces**
@@ -114,7 +115,8 @@ The shared kernel. Zero external NuGet dependencies. Everything else depends on 
 - `IPipelineRunStateRepository` — CRUD + state-transition queries
 - `IAuditRepository` — append-only write
 - `IAdfService` — ADF run queries and rerun/cancel commands
-- `INotificationService` — send / update Teams Adaptive Cards
+- `IEmailNotifierService` — send HTML notification email; send outcome email after approval decision
+- `INotificationSettingsRepository` — read/write the recipient email from the `NotificationSettings` table
 - `IApprovalStore` — read pending approvals by correlation ID
 
 **Enums**
@@ -161,10 +163,11 @@ All AI reasoning lives here. Each agent is a class that:
 - Advances state `Detected → Diagnosed` (or `DiagnosisFailed` on SK error).
 
 **NotifierAgent**
-- For each `Status = Diagnosed` row, composes a Teams Adaptive Card containing the diagnosis summary and two actions: Approve / Reject.
-- Sends via `INotificationService` (Microsoft Graph).
-- Persists the returned `activityId` as `ApprovalRequestId` and advances state to `PendingApproval`.
+- For each `Status = Diagnosed` row, sends an HTML email via `IEmailNotifierService` (MailKit).
+- PendingApproval emails include an "Open Approvals Dashboard" link to `{DashboardBaseUrl}/approvals`.
+- Advances state to `PendingApproval`.
 - Skips notification for `RemediationRiskLevel = Low` — marks directly as `AutoApproved` for FixAgent.
+- After an approval decision, `ApprovalsController` calls `SendOutcomeEmailAsync` to send a follow-up.
 
 **FixAgent**
 - Processes rows with `Status = Approved` or `Status = AutoApproved`.
@@ -194,9 +197,11 @@ Adapters for every external system. Implements all interfaces from Core. No busi
 - `AdfService` — wraps `DataFactoryManagementClient` from `Azure.ResourceManager.DataFactory`; authenticated via `DefaultAzureCredential`.
 - Exposes: `GetFailedRunsSinceAsync`, `GetRunLogsAsync`, `TriggerRunAsync`, `CancelRunAsync`.
 
-**Teams / Graph Integration**
-- `TeamsNotificationService` — wraps `GraphServiceClient`; builds Adaptive Card JSON, posts to a configured Teams channel, stores `activityId`.
-- `ApprovalStore` — reads `ApprovalRequests` by correlation ID; used by the Api webhook to resolve incoming approvals.
+**Email Integration**
+- `EmailNotifierService` — MailKit SMTP client; builds HTML email bodies; reads the recipient from `INotificationSettingsRepository`; never throws.
+- `NotificationSettingsRepository` — single-row upsert for the recipient email address.
+- SMTP configuration lives in `Email:*` appsettings keys (`SmtpHost`, `SmtpPort`, `UseSsl`, `Username`, `Password`, `FromAddress`, `FromName`, `DashboardBaseUrl`).
+- Dev default points at `localhost:1025` (MailHog or any local SMTP relay).
 
 **Hangfire Storage**
 - Hangfire SQL Server storage is configured here and injected into Worker.
@@ -353,6 +358,8 @@ All endpoints require the `X-Api-Key` header. Responses use camelCase JSON with 
 | `POST` | `/api/approvals/{id}/reject` | X-Api-Key | body: `{ "reason": "…" }` | 200 OK |
 | `GET` | `/api/activity` | X-Api-Key | `agentName`, `success`, `from`, `to`, `page`, `pageSize` | `{ items, totalCount, page, pageSize }` |
 | `GET` | `/api/health` | X-Api-Key | — | `{ status: "ok", timestamp }` |
+| `GET` | `/api/settings/notifications` | X-Api-Key | — | `{ recipientEmail }` |
+| `PUT` | `/api/settings/notifications` | X-Api-Key | body: `{ "recipientEmail": "…" }` | `{ recipientEmail }` |
 
 **CORS:** The Api reads allowed origins from `Cors:AllowedOrigins` in `appsettings.json`. Development defaults: `http://localhost:5071`, `https://localhost:7071`, `http://localhost:5000`, `https://localhost:7000`.
 
