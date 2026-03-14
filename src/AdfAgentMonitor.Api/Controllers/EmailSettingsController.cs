@@ -12,6 +12,7 @@ namespace AdfAgentMonitor.Api.Controllers;
 [ServiceFilter(typeof(ApiKeyAuthFilter))]
 public class EmailSettingsController(
     IEmailSettingsOverrideRepository repo,
+    IEmailNotifierService notifier,
     IOptions<EmailSettings> baseSettings) : ControllerBase
 {
     [HttpGet]
@@ -66,6 +67,16 @@ public class EmailSettingsController(
         return NoContent();
     }
 
+    [HttpPost("test")]
+    public async Task<IActionResult> Test([FromBody] TestEmailRequest req, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(req.RecipientEmail))
+            return BadRequest("RecipientEmail is required.");
+
+        var (success, message) = await notifier.SendTestEmailAsync(req.RecipientEmail.Trim(), ct);
+        return Ok(new { success, message });
+    }
+
     private static string? NullIfBlank(string? value)
         => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }
@@ -80,6 +91,8 @@ public record EmailSettingsResponse(
     string  FromName,
     string  DashboardBaseUrl,
     bool    HasOverrides);
+
+public record TestEmailRequest(string RecipientEmail);
 
 public record UpdateEmailSettingsRequest(
     string? SmtpHost,

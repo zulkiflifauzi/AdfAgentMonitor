@@ -429,6 +429,54 @@
                     Clear a field to remove that override and revert to the server default.
                 </MudAlert>
 
+                <MudDivider />
+
+                @* Test email *@
+                <MudPaper Elevation="0"
+                          Style="border:1px solid var(--mud-palette-divider); border-radius:8px"
+                          Class="pa-4">
+                    <MudStack Spacing="3">
+                        <MudStack Spacing="0">
+                            <MudText Typo="Typo.body1" Style="font-weight:600">Test configuration</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                Send a test email using the current settings above (saved overrides + appsettings).
+                                Save your changes first if you want to test a new configuration.
+                            </MudText>
+                        </MudStack>
+                        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                            <MudTextField @bind-Value="_testEmailRecipient"
+                                          Label="Send test to"
+                                          Variant="Variant.Outlined"
+                                          Placeholder="you@example.com"
+                                          InputType="InputType.Email"
+                                          Adornment="Adornment.Start"
+                                          AdornmentIcon="@Icons.Material.Filled.Send"
+                                          Margin="Margin.Dense"
+                                          Style="flex:1"
+                                          OnKeyDown="@OnTestEmailKeyDown" />
+                            <MudButton Variant="Variant.Outlined"
+                                       Color="Color.Primary"
+                                       StartIcon="@Icons.Material.Filled.Email"
+                                       Disabled="@(_sendingTestEmail || string.IsNullOrWhiteSpace(_testEmailRecipient))"
+                                       OnClick="@SendTestEmailAsync">
+                                @if (_sendingTestEmail)
+                                {
+                                    <MudProgressCircular Indeterminate="true" Size="Size.Small" Class="mr-2" />
+                                    <text>Sending…</text>
+                                }
+                                else { <text>Send Test</text> }
+                            </MudButton>
+                        </MudStack>
+                        @if (_testEmailResult is not null)
+                        {
+                            <MudAlert Severity="@(_testEmailResult.Value.Success ? Severity.Success : Severity.Error)"
+                                      Dense="true">
+                                @_testEmailResult.Value.Message
+                            </MudAlert>
+                        }
+                    </MudStack>
+                </MudPaper>
+
                 @* Action buttons *@
                 <MudStack Row="true" Spacing="2" Class="flex-wrap">
                     <MudButton Variant="Variant.Filled"
@@ -595,6 +643,9 @@
     private string  _emailDashboardBaseUrl = string.Empty;
     private bool    _showEmailPassword;
     private bool    _savingEmailSettings;
+    private string  _testEmailRecipient  = string.Empty;
+    private bool    _sendingTestEmail;
+    private (bool Success, string Message)? _testEmailResult;
 
     // ── State — Display ───────────────────────────────────────────────────────
 
@@ -840,6 +891,30 @@
         {
             _savingEmailSettings = false;
         }
+    }
+
+    private async Task SendTestEmailAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_testEmailRecipient)) return;
+        _sendingTestEmail = true;
+        _testEmailResult  = null;
+        try
+        {
+            _testEmailResult = await ApiClient.TestEmailAsync(_testEmailRecipient.Trim(), _cts.Token);
+        }
+        catch (Exception ex)
+        {
+            _testEmailResult = (false, $"Request failed: {ex.Message}");
+        }
+        finally
+        {
+            _sendingTestEmail = false;
+        }
+    }
+
+    private async Task OnTestEmailKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await SendTestEmailAsync();
     }
 
     private static string? NullIfBlank(string? value)

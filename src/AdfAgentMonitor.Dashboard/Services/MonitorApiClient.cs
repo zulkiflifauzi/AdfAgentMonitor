@@ -194,6 +194,20 @@ public class MonitorApiClient(HttpClient http) : IMonitorApiClient
         await EnsureSuccessAsync(response, ct);
     }
 
+    public async Task<(bool Success, string Message)> TestEmailAsync(string recipientEmail, CancellationToken ct = default)
+    {
+        var response = await http.PostAsJsonAsync(
+            "api/settings/email/test",
+            new { RecipientEmail = recipientEmail },
+            JsonOptions,
+            ct);
+        await EnsureSuccessAsync(response, ct);
+        var obj = await response.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>(ct);
+        var success = obj.TryGetProperty("success", out var s) && s.GetBoolean();
+        var message = obj.TryGetProperty("message", out var m) ? m.GetString() ?? string.Empty : string.Empty;
+        return (success, message);
+    }
+
     // -------------------------------------------------------------------------
 
     private static async Task EnsureSuccessAsync(HttpResponseMessage response, CancellationToken ct)

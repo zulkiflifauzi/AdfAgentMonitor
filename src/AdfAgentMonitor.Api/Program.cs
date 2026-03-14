@@ -21,7 +21,7 @@ builder.Services.AddCors(opt =>
     opt.AddPolicy("BlazorPwa", policy =>
         policy
             .WithOrigins(allowedOrigins)
-            .WithMethods("GET", "POST")
+            .WithMethods("GET", "POST", "PUT", "DELETE")
             .WithHeaders("Content-Type", "X-Api-Key")));
 
 // ---------------------------------------------------------------------------

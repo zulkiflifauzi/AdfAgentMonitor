@@ -73,6 +73,12 @@ public interface IMonitorApiClient
     /// Clears all email settings overrides via <c>DELETE /api/settings/email</c>.
     /// </summary>
     Task ClearEmailSettingsAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Sends a test email to <paramref name="recipientEmail"/> using the current effective
+    /// settings via <c>POST /api/settings/email/test</c>.
+    /// </summary>
+    Task<(bool Success, string Message)> TestEmailAsync(string recipientEmail, CancellationToken ct = default);
 }
 
 /// <summary>Result of a Test Connection call.</summary>

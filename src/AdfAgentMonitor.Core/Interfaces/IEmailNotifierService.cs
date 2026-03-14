@@ -14,4 +14,11 @@ public interface IEmailNotifierService
     /// Sends a follow-up outcome email after an approval decision.
     /// </summary>
     Task SendOutcomeEmailAsync(PipelineRunState state, string outcome, CancellationToken ct = default);
+
+    /// <summary>
+    /// Sends a test email to <paramref name="recipientEmail"/> using the current effective
+    /// settings (appsettings + any DB overrides). Returns a result message describing
+    /// success or the failure reason. Never throws.
+    /// </summary>
+    Task<(bool Success, string Message)> SendTestEmailAsync(string recipientEmail, CancellationToken ct = default);
 }

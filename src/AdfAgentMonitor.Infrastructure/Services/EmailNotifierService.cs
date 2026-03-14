@@ -84,6 +84,23 @@ public class EmailNotifierService(
         }
     }
 
+    public async Task<(bool Success, string Message)> SendTestEmailAsync(string recipientEmail, CancellationToken ct = default)
+    {
+        try
+        {
+            var cfg     = await GetEffectiveSettingsAsync(ct);
+            var subject = "[ADF Agent Monitor] Test email — configuration check";
+            var body    = BuildTestEmailHtml(cfg);
+            await SendAsync([recipientEmail], subject, body, cfg, ct);
+            return (true, $"Test email sent successfully to {recipientEmail} via {cfg.SmtpHost}:{cfg.SmtpPort}.");
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Test email send failed for recipient={Recipient}.", recipientEmail);
+            return (false, ex.Message);
+        }
+    }
+
     // -------------------------------------------------------------------------
 
     private async Task SendAsync(IEnumerable<string> to, string subject, string htmlBody, EmailSettings cfg, CancellationToken ct)
@@ -162,6 +179,40 @@ public class EmailNotifierService(
 
         sb.Append("</div></div>");
         return sb.ToString();
+    }
+
+    private static string BuildTestEmailHtml(EmailSettings cfg)
+    {
+        var sentAt = DateTimeOffset.UtcNow.ToString("f");
+        return $"""
+            <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;border:1px solid #e0e0e0;border-radius:4px;overflow:hidden">
+              <div style="background:#1565c0;color:#fff;padding:16px 24px">
+                <div style="font-size:12px;font-weight:bold;letter-spacing:1px">CONFIGURATION TEST</div>
+                <div style="font-size:20px;font-weight:bold;margin-top:4px">ADF Agent Monitor</div>
+              </div>
+              <div style="padding:24px">
+                <p style="margin-top:0">Your email configuration is working correctly. This message was sent at <strong>{sentAt} UTC</strong>.</p>
+                <table style="width:100%;border-collapse:collapse;font-size:13px">
+                  <tr style="border-bottom:1px solid #e0e0e0">
+                    <td style="color:#757575;padding:6px 12px 6px 0;width:140px">SMTP Host</td>
+                    <td style="padding:6px 0;font-family:monospace">{System.Net.WebUtility.HtmlEncode(cfg.SmtpHost)}:{cfg.SmtpPort}</td>
+                  </tr>
+                  <tr style="border-bottom:1px solid #e0e0e0">
+                    <td style="color:#757575;padding:6px 12px 6px 0">Encryption</td>
+                    <td style="padding:6px 0">{(cfg.UseSsl ? "STARTTLS" : "None")}</td>
+                  </tr>
+                  <tr style="border-bottom:1px solid #e0e0e0">
+                    <td style="color:#757575;padding:6px 12px 6px 0">Auth</td>
+                    <td style="padding:6px 0">{(string.IsNullOrEmpty(cfg.Username) ? "None (unauthenticated relay)" : System.Net.WebUtility.HtmlEncode(cfg.Username))}</td>
+                  </tr>
+                  <tr>
+                    <td style="color:#757575;padding:6px 12px 6px 0">From</td>
+                    <td style="padding:6px 0">{System.Net.WebUtility.HtmlEncode(cfg.FromName)} &lt;{System.Net.WebUtility.HtmlEncode(cfg.FromAddress)}&gt;</td>
+                  </tr>
+                </table>
+              </div>
+            </div>
+            """;
     }
 
     private string BuildOutcomeHtml(PipelineRunState state, string outcome)
