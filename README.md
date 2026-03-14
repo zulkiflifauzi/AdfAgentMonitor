@@ -2,7 +2,7 @@
 
 A .NET 9 multi-agent system that monitors Azure Data Factory pipelines, diagnoses failures
 with Claude (via Semantic Kernel), auto-remediates where safe, and routes human approvals
-through a Blazor WebAssembly dashboard and Microsoft Teams Adaptive Cards.
+through HTML email notifications and a Blazor WebAssembly dashboard.
 
 ---
 
@@ -24,18 +24,20 @@ Azure Data Factory
   └── High risk or manual-review codes → PendingApproval
       │
       ▼
- NotifierAgent  (Microsoft Graph → Teams Adaptive Card)
+ NotifierAgent  (MailKit → HTML email to configured recipient)
       │
-      ├── [Auto-resolved]  → "RESOLVED" card
-      └── [PendingApproval] → card with Approve / Reject buttons
+      ├── [Auto-resolved]  → "RESOLVED" email
+      └── [PendingApproval] → email with link to /approvals dashboard
                                     │
+                    Operator opens Dashboard → Approvals page
+                        │
                         ┌───────────┴───────────┐
                         ▼                       ▼
                    POST /api/approvals/{id}/approve   POST /api/approvals/{id}/reject
                         │                       │
                    FixAgent runs again       Status = Resolved
-                   NotifierAgent posts       NotifierAgent posts
-                   outcome card              rejection card
+                   NotifierAgent sends       NotifierAgent sends
+                   outcome email             rejection email
 
 Dashboard (Blazor WASM PWA)
   ├── GET /api/runs, /api/runs/summary  (stat cards + run list)
@@ -54,7 +56,7 @@ agents never call each other directly.
 | Project | Role |
 |---|---|
 | `AdfAgentMonitor.Core` | Entities, interfaces, enums, models — no dependencies |
-| `AdfAgentMonitor.Infrastructure` | EF Core, ADF SDK, Graph SDK, Anthropic SDK, DI wiring |
+| `AdfAgentMonitor.Infrastructure` | EF Core, ADF SDK, MailKit, Anthropic SDK, DI wiring |
 | `AdfAgentMonitor.Agents` | All agent implementations + Hangfire orchestrator |
 | `AdfAgentMonitor.Worker` | Hangfire processing host (recurring + background jobs) |
 | `AdfAgentMonitor.Api` | ASP.NET Core API — approval webhooks + dashboard read endpoints |
@@ -69,7 +71,7 @@ agents never call each other directly.
 - An Azure subscription with an Azure Data Factory instance
 - An Azure AD application registration (or Managed Identity for production)
 - An Anthropic API key
-- A Microsoft 365 tenant with a Teams team and channel
+- An SMTP server (any provider — Gmail, SendGrid, SES, or a local relay such as [MailHog](https://github.com/mailhog/MailHog) for dev)
 
 ---
 
@@ -104,15 +106,22 @@ set, `ClientSecretCredential` is used. When any is absent, `DefaultAzureCredenti
 (supports Managed Identity, `az login`, Visual Studio / VS Code sign-in, and the `AZURE_*`
 environment variables).
 
-The same credential is shared by both the ADF ARM client and the Microsoft Graph client.
+The credential is used by the ADF ARM client only.
 
-### Teams
+### Email
 
-| Key | Env var | Description |
-|---|---|---|
-| `Teams:TeamId` | `TEAMS__TEAMID` | Azure AD object ID of the Teams team |
-| `Teams:ChannelId` | `TEAMS__CHANNELID` | Channel ID within that team |
-| `Teams:ApprovalWebhookBaseUrl` | `TEAMS__APPROVALWEBHOOKBASEURL` | Public base URL of the Api host (e.g. `https://adfmonitor.example.com`). Used to build the Approve/Reject button URLs in the Adaptive Card. |
+| Key | Env var | Required | Description |
+|---|---|---|---|
+| `Email:SmtpHost` | `EMAIL__SMTPHOST` | Yes | SMTP server hostname |
+| `Email:SmtpPort` | `EMAIL__SMTPPORT` | No | SMTP port (default: `587`) |
+| `Email:UseSsl` | `EMAIL__USESSL` | No | Use STARTTLS (default: `true`) |
+| `Email:Username` | `EMAIL__USERNAME` | No | SMTP auth username — omit for unauthenticated relays |
+| `Email:Password` | `EMAIL__PASSWORD` | No | SMTP auth password — use Key Vault or env var |
+| `Email:FromAddress` | `EMAIL__FROMADDRESS` | Yes | Sender email address |
+| `Email:FromName` | `EMAIL__FROMNAME` | No | Sender display name (default: `ADF Agent Monitor`) |
+| `Email:DashboardBaseUrl` | `EMAIL__DASHBOARDBASEURL` | No | Base URL of the Dashboard (e.g. `https://dashboard.example.com`). Used to build the "Open Approvals" link in emails. |
+
+The notification **recipient** email is not in config — it is stored in the database and managed via **Settings → Notifications** in the Dashboard (or `PUT /api/settings/notifications`).
 
 ### Anthropic
 
@@ -189,13 +198,15 @@ dotnet user-secrets --project src/AdfAgentMonitor.Worker set \
 dotnet user-secrets --project src/AdfAgentMonitor.Worker set \
   "AzureDataFactory:FactoryName"     "<your-adf-name>"
 dotnet user-secrets --project src/AdfAgentMonitor.Worker set \
-  "Teams:TeamId"                     "<teams-team-id>"
-dotnet user-secrets --project src/AdfAgentMonitor.Worker set \
-  "Teams:ChannelId"                  "<teams-channel-id>"
-dotnet user-secrets --project src/AdfAgentMonitor.Worker set \
-  "Teams:ApprovalWebhookBaseUrl"     "https://localhost:7001"
-dotnet user-secrets --project src/AdfAgentMonitor.Worker set \
   "Anthropic:ApiKey"                 "<your-anthropic-key>"
+dotnet user-secrets --project src/AdfAgentMonitor.Worker set \
+  "Email:SmtpHost"                   "<your-smtp-host>"
+dotnet user-secrets --project src/AdfAgentMonitor.Worker set \
+  "Email:Username"                   "<your-smtp-username>"
+dotnet user-secrets --project src/AdfAgentMonitor.Worker set \
+  "Email:Password"                   "<your-smtp-password>"
+dotnet user-secrets --project src/AdfAgentMonitor.Worker set \
+  "Email:FromAddress"                "<noreply@yourdomain.com>"
 
 # Api project
 dotnet user-secrets --project src/AdfAgentMonitor.Api set \
@@ -203,11 +214,13 @@ dotnet user-secrets --project src/AdfAgentMonitor.Api set \
 dotnet user-secrets --project src/AdfAgentMonitor.Api set \
   "Anthropic:ApiKey"                 "<your-anthropic-key>"
 dotnet user-secrets --project src/AdfAgentMonitor.Api set \
-  "Teams:TeamId"                     "<teams-team-id>"
+  "Email:SmtpHost"                   "<your-smtp-host>"
 dotnet user-secrets --project src/AdfAgentMonitor.Api set \
-  "Teams:ChannelId"                  "<teams-channel-id>"
+  "Email:Username"                   "<your-smtp-username>"
 dotnet user-secrets --project src/AdfAgentMonitor.Api set \
-  "Teams:ApprovalWebhookBaseUrl"     "https://localhost:7001"
+  "Email:Password"                   "<your-smtp-password>"
+dotnet user-secrets --project src/AdfAgentMonitor.Api set \
+  "Email:FromAddress"                "<noreply@yourdomain.com>"
 ```
 
 For Azure authentication locally, `DefaultAzureCredential` will pick up your `az login`
@@ -274,9 +287,13 @@ AZUREDATAFACTORY__FACTORYNAME=<name>
 AZUREDATAFACTORY__TENANTID=<guid>          # omit to use Managed Identity
 AZUREDATAFACTORY__CLIENTID=<guid>          # omit to use Managed Identity
 AZUREDATAFACTORY__CLIENTSECRET=<secret>    # omit to use Managed Identity
-TEAMS__TEAMID=<id>
-TEAMS__CHANNELID=<id>
-TEAMS__APPROVALWEBHOOKBASEURL=https://your-api-host.example.com
+EMAIL__SMTPHOST=smtp.example.com
+EMAIL__SMTPPORT=587
+EMAIL__USESSL=true
+EMAIL__USERNAME=<smtp-username>
+EMAIL__PASSWORD=<smtp-password>
+EMAIL__FROMADDRESS=adfmonitor@example.com
+EMAIL__DASHBOARDBASEURL=https://your-dashboard-host.example.com
 ANTHROPIC__APIKEY=<key>
 HANGFIRE__SQLCONNECTIONSTRING=Server=<sql>;Database=AdfAgentMonitor;...
 ```
@@ -301,8 +318,6 @@ The service principal (or Managed Identity) needs:
 | Resource | Permission | Type |
 |---|---|---|
 | Azure Data Factory | `Contributor` or `Data Factory Contributor` | Azure RBAC |
-| Microsoft Graph | `ChannelMessage.Send` | Application permission |
-| Microsoft Graph | `ChatMessage.ReadWrite` (for `UpdateCardOutcomeAsync`) | Application permission |
 
 ---
 
@@ -313,13 +328,13 @@ The service principal (or Managed Identity) needs:
 3. **FixAgent** routes the run:
    - Auto-remediated (SinkThrottled / IROffline, Low/Medium risk) → `Status = Resolved`
    - Everything else → `Status = PendingApproval`, `ApprovalStatus = Pending`
-4. **NotifierAgent** posts an Adaptive Card to Teams
-   - Resolved runs: informational card
-   - PendingApproval runs: card with **Approve** and **Reject** buttons
-5. A team member clicks **Approve** → Teams calls `POST /api/approvals/{id}/approve` with `X-Api-Key`
-   - State → `Remediating`; FixAgent re-runs; outcome card posted
-6. A team member clicks **Reject** → Teams calls `POST /api/approvals/{id}/reject`
-   - State → `Resolved`; no remediation; rejection card posted
+4. **NotifierAgent** sends an HTML email to the configured recipient
+   - Resolved runs: informational "auto-resolved" email
+   - PendingApproval runs: email with a link to the `/approvals` page on the Dashboard
+5. An operator opens the Dashboard → Approvals page and clicks **Approve**
+   - `POST /api/approvals/{id}/approve` → State → `Remediating`; FixAgent re-runs; outcome email sent
+6. An operator clicks **Reject**
+   - `POST /api/approvals/{id}/reject` → State → `Resolved`; no remediation; rejection outcome email sent
 
 ---
 
