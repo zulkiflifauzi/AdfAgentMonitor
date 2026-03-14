@@ -71,6 +71,7 @@ public static class DependencyInjection
         services.AddScoped<IPipelineRunStateRepository, PipelineRunStateRepository>();
         services.AddScoped<IAgentActivityLogRepository, AgentActivityLogRepository>();
         services.AddScoped<INotificationSettingsRepository, NotificationSettingsRepository>();
+        services.AddScoped<IEmailSettingsOverrideRepository, EmailSettingsOverrideRepository>();
 
         // ---------------------------------------------------------------------------
         // Azure Data Factory service

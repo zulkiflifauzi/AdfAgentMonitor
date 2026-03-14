@@ -12,10 +12,28 @@ namespace AdfAgentMonitor.Infrastructure.Services;
 
 public class EmailNotifierService(
     INotificationSettingsRepository settingsRepo,
+    IEmailSettingsOverrideRepository overrideRepo,
     IOptions<EmailSettings> options,
     ILogger<EmailNotifierService> logger) : IEmailNotifierService
 {
     private readonly EmailSettings _cfg = options.Value;
+
+    private async Task<EmailSettings> GetEffectiveSettingsAsync(CancellationToken ct)
+    {
+        var ov = await overrideRepo.GetAsync(ct);
+        if (ov is null) return _cfg;
+        return new EmailSettings
+        {
+            SmtpHost         = ov.SmtpHost         ?? _cfg.SmtpHost,
+            SmtpPort         = ov.SmtpPort         ?? _cfg.SmtpPort,
+            UseSsl           = ov.UseSsl           ?? _cfg.UseSsl,
+            Username         = ov.Username         ?? _cfg.Username,
+            Password         = ov.Password         ?? _cfg.Password,
+            FromAddress      = ov.FromAddress      ?? _cfg.FromAddress,
+            FromName         = ov.FromName         ?? _cfg.FromName,
+            DashboardBaseUrl = ov.DashboardBaseUrl ?? _cfg.DashboardBaseUrl,
+        };
+    }
 
     public async Task<bool> SendNotificationAsync(PipelineRunState state, CancellationToken ct = default)
     {
@@ -36,8 +54,9 @@ public class EmailNotifierService(
                 _                                 => $"[ADF Monitor] Pipeline status update: {state.PipelineName}"
             };
 
-            var body = BuildHtmlBody(state);
-            await SendAsync(recipients, subject, body, ct);
+            var cfg  = await GetEffectiveSettingsAsync(ct);
+            var body = BuildHtmlBody(state, cfg);
+            await SendAsync(recipients, subject, body, cfg, ct);
             return true;
         }
         catch (Exception ex)
@@ -54,9 +73,10 @@ public class EmailNotifierService(
             var recipients = (await settingsRepo.GetAsync(ct)).RecipientEmailList;
             if (recipients.Count == 0) return;
 
+            var cfg     = await GetEffectiveSettingsAsync(ct);
             var subject = $"[ADF Monitor] Pipeline approval {outcome}: {state.PipelineName}";
             var body    = BuildOutcomeHtml(state, outcome);
-            await SendAsync(recipients, subject, body, ct);
+            await SendAsync(recipients, subject, body, cfg, ct);
         }
         catch (Exception ex)
         {
@@ -66,27 +86,27 @@ public class EmailNotifierService(
 
     // -------------------------------------------------------------------------
 
-    private async Task SendAsync(IEnumerable<string> to, string subject, string htmlBody, CancellationToken ct)
+    private async Task SendAsync(IEnumerable<string> to, string subject, string htmlBody, EmailSettings cfg, CancellationToken ct)
     {
         var message = new MimeMessage();
-        message.From.Add(new MailboxAddress(_cfg.FromName, _cfg.FromAddress));
+        message.From.Add(new MailboxAddress(cfg.FromName, cfg.FromAddress));
         foreach (var addr in to)
             message.To.Add(MailboxAddress.Parse(addr));
         message.Subject = subject;
         message.Body    = new TextPart(MimeKit.Text.TextFormat.Html) { Text = htmlBody };
 
         using var client = new SmtpClient();
-        await client.ConnectAsync(_cfg.SmtpHost, _cfg.SmtpPort,
-            _cfg.UseSsl ? SecureSocketOptions.StartTls : SecureSocketOptions.None, ct);
+        await client.ConnectAsync(cfg.SmtpHost, cfg.SmtpPort,
+            cfg.UseSsl ? SecureSocketOptions.StartTls : SecureSocketOptions.None, ct);
 
-        if (!string.IsNullOrEmpty(_cfg.Username))
-            await client.AuthenticateAsync(_cfg.Username, _cfg.Password, ct);
+        if (!string.IsNullOrEmpty(cfg.Username))
+            await client.AuthenticateAsync(cfg.Username, cfg.Password, ct);
 
         await client.SendAsync(message, ct);
         await client.DisconnectAsync(true, ct);
     }
 
-    private string BuildHtmlBody(PipelineRunState state)
+    private string BuildHtmlBody(PipelineRunState state, EmailSettings cfg)
     {
         var statusColor = state.Status switch
         {
@@ -128,9 +148,9 @@ public class EmailNotifierService(
         if (!string.IsNullOrWhiteSpace(state.RemediationPlan))
             sb.Append($"<p><strong>Remediation Plan</strong><br>{System.Net.WebUtility.HtmlEncode(state.RemediationPlan)}</p>");
 
-        if (state.Status == PipelineRunStatus.PendingApproval && !string.IsNullOrEmpty(_cfg.DashboardBaseUrl))
+        if (state.Status == PipelineRunStatus.PendingApproval && !string.IsNullOrEmpty(cfg.DashboardBaseUrl))
         {
-            var url = $"{_cfg.DashboardBaseUrl.TrimEnd('/')}/approvals";
+            var url = $"{cfg.DashboardBaseUrl.TrimEnd('/')}/approvals";
             sb.Append($"""
                 <div style="margin-top:24px">
                   <a href="{url}" style="background:#1565c0;color:#fff;padding:10px 24px;border-radius:4px;text-decoration:none;font-weight:bold">

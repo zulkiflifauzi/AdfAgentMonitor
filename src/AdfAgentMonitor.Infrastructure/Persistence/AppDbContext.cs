@@ -6,9 +6,10 @@ namespace AdfAgentMonitor.Infrastructure.Persistence;
 
 public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
 {
-    public DbSet<PipelineRunState>    PipelineRunStates    => Set<PipelineRunState>();
-    public DbSet<AgentActivityLog>   AgentActivityLogs    => Set<AgentActivityLog>();
-    public DbSet<NotificationSettings> NotificationSettings => Set<NotificationSettings>();
+    public DbSet<PipelineRunState>       PipelineRunStates      => Set<PipelineRunState>();
+    public DbSet<AgentActivityLog>      AgentActivityLogs      => Set<AgentActivityLog>();
+    public DbSet<NotificationSettings>  NotificationSettings   => Set<NotificationSettings>();
+    public DbSet<EmailSettingsOverride> EmailSettingsOverrides => Set<EmailSettingsOverride>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -127,6 +128,20 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
             entity.HasIndex(e => new { e.FactoryName, e.Status })
                   .HasDatabaseName("IX_PipelineRunStates_FactoryName_Status");
+        });
+
+        modelBuilder.Entity<EmailSettingsOverride>(e =>
+        {
+            e.ToTable("EmailSettingsOverrides");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).ValueGeneratedNever();
+            e.Property(x => x.SmtpHost).HasMaxLength(256);
+            e.Property(x => x.Username).HasMaxLength(256);
+            e.Property(x => x.Password).HasMaxLength(1024);
+            e.Property(x => x.FromAddress).HasMaxLength(256);
+            e.Property(x => x.FromName).HasMaxLength(128);
+            e.Property(x => x.DashboardBaseUrl).HasMaxLength(512);
+            e.Property(x => x.UpdatedAt).IsRequired();
         });
 
         modelBuilder.Entity<NotificationSettings>(e =>

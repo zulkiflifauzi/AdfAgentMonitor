@@ -170,6 +170,30 @@ public class MonitorApiClient(HttpClient http) : IMonitorApiClient
         await EnsureSuccessAsync(response, ct);
     }
 
+    public async Task<EmailSettingsDto?> GetEmailSettingsAsync(CancellationToken ct = default)
+    {
+        var response = await http.GetAsync("api/settings/email", ct);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return null;
+        await EnsureSuccessAsync(response, ct);
+        return await response.Content.ReadFromJsonAsync<EmailSettingsDto>(JsonOptions, ct);
+    }
+
+    public async Task<EmailSettingsDto?> SetEmailSettingsAsync(EmailSettingsRequest request, CancellationToken ct = default)
+    {
+        var response = await http.PutAsJsonAsync("api/settings/email", request, JsonOptions, ct);
+        await EnsureSuccessAsync(response, ct);
+        // PUT may return { cleared: true } when all fields are null — handle gracefully.
+        var json = await response.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>(ct);
+        if (json.TryGetProperty("cleared", out _)) return null;
+        return json.Deserialize<EmailSettingsDto>(JsonOptions);
+    }
+
+    public async Task ClearEmailSettingsAsync(CancellationToken ct = default)
+    {
+        var response = await http.DeleteAsync("api/settings/email", ct);
+        await EnsureSuccessAsync(response, ct);
+    }
+
     // -------------------------------------------------------------------------
 
     private static async Task EnsureSuccessAsync(HttpResponseMessage response, CancellationToken ct)

@@ -304,7 +304,162 @@
         </MudTabPanel>
 
         @* ════════════════════════════════════════════════════════════════════
-           Tab 3 — Display
+           Tab 3 — Email Settings
+           ════════════════════════════════════════════════════════════════════ *@
+
+        <MudTabPanel Text="Email" Icon="@Icons.Material.Filled.AlternateEmail">
+            <MudStack Spacing="4">
+
+                @if (_emailSettings?.HasOverrides == true)
+                {
+                    <MudAlert Severity="Severity.Info" Dense="true">
+                        Some settings are overriding <code>appsettings.json</code>. Click
+                        <strong>Clear overrides</strong> to revert all fields to their server defaults.
+                    </MudAlert>
+                }
+
+                @* SMTP *@
+                <MudPaper Elevation="0"
+                          Style="border:1px solid var(--mud-palette-divider); border-radius:8px"
+                          Class="pa-4">
+                    <MudStack Spacing="3">
+                        <MudText Typo="Typo.body1" Style="font-weight:600">SMTP server</MudText>
+                        <MudStack Row="true" Spacing="2">
+                            <MudTextField @bind-Value="_emailSmtpHost"
+                                          Label="SMTP Host"
+                                          Variant="Variant.Outlined"
+                                          Placeholder="smtp.example.com"
+                                          Adornment="Adornment.Start"
+                                          AdornmentIcon="@Icons.Material.Filled.Dns"
+                                          Style="flex:1"
+                                          Margin="Margin.Dense" />
+                            <MudNumericField T="int?"
+                                             @bind-Value="_emailSmtpPort"
+                                             Label="Port"
+                                             Variant="Variant.Outlined"
+                                             Placeholder="587"
+                                             Style="width:100px"
+                                             Margin="Margin.Dense" />
+                        </MudStack>
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                            <MudStack Spacing="0">
+                                <MudText Typo="Typo.body2">Use STARTTLS</MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">Encrypt the connection with STARTTLS.</MudText>
+                            </MudStack>
+                            <MudSwitch T="bool?" Value="@_emailUseSsl"
+                                       ValueChanged="@((bool? v) => _emailUseSsl = v)"
+                                       Color="Color.Primary" />
+                        </MudStack>
+                    </MudStack>
+                </MudPaper>
+
+                @* Auth *@
+                <MudPaper Elevation="0"
+                          Style="border:1px solid var(--mud-palette-divider); border-radius:8px"
+                          Class="pa-4">
+                    <MudStack Spacing="3">
+                        <MudText Typo="Typo.body1" Style="font-weight:600">Authentication</MudText>
+                        <MudTextField @bind-Value="_emailUsername"
+                                      Label="Username"
+                                      Variant="Variant.Outlined"
+                                      Placeholder="Leave blank for unauthenticated relays"
+                                      Adornment="Adornment.Start"
+                                      AdornmentIcon="@Icons.Material.Filled.Person"
+                                      Margin="Margin.Dense" />
+                        <MudTextField @bind-Value="_emailPassword"
+                                      Label="@(_emailSettings?.HasPassword == true ? "Password (set — enter new value to change)" : "Password")"
+                                      Variant="Variant.Outlined"
+                                      Placeholder="@(_emailSettings?.HasPassword == true ? "Leave blank to keep existing password" : "Enter SMTP password")"
+                                      InputType="@(_showEmailPassword ? InputType.Text : InputType.Password)"
+                                      Adornment="Adornment.End"
+                                      AdornmentIcon="@(_showEmailPassword ? Icons.Material.Filled.VisibilityOff : Icons.Material.Filled.Visibility)"
+                                      OnAdornmentClick="@(() => _showEmailPassword = !_showEmailPassword)"
+                                      Margin="Margin.Dense" />
+                    </MudStack>
+                </MudPaper>
+
+                @* Sender *@
+                <MudPaper Elevation="0"
+                          Style="border:1px solid var(--mud-palette-divider); border-radius:8px"
+                          Class="pa-4">
+                    <MudStack Spacing="3">
+                        <MudText Typo="Typo.body1" Style="font-weight:600">Sender</MudText>
+                        <MudTextField @bind-Value="_emailFromAddress"
+                                      Label="From Address"
+                                      Variant="Variant.Outlined"
+                                      Placeholder="adfmonitor@example.com"
+                                      InputType="InputType.Email"
+                                      Adornment="Adornment.Start"
+                                      AdornmentIcon="@Icons.Material.Filled.Email"
+                                      Margin="Margin.Dense" />
+                        <MudTextField @bind-Value="_emailFromName"
+                                      Label="From Name"
+                                      Variant="Variant.Outlined"
+                                      Placeholder="ADF Agent Monitor"
+                                      Adornment="Adornment.Start"
+                                      AdornmentIcon="@Icons.Material.Filled.Badge"
+                                      Margin="Margin.Dense" />
+                    </MudStack>
+                </MudPaper>
+
+                @* Links *@
+                <MudPaper Elevation="0"
+                          Style="border:1px solid var(--mud-palette-divider); border-radius:8px"
+                          Class="pa-4">
+                    <MudStack Spacing="3">
+                        <MudStack Spacing="0">
+                            <MudText Typo="Typo.body1" Style="font-weight:600">Dashboard base URL</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                Used to build the "Open Approvals Dashboard" link in approval emails.
+                            </MudText>
+                        </MudStack>
+                        <MudTextField @bind-Value="_emailDashboardBaseUrl"
+                                      Label="Dashboard Base URL"
+                                      Variant="Variant.Outlined"
+                                      Placeholder="https://dashboard.example.com"
+                                      InputType="InputType.Url"
+                                      Adornment="Adornment.Start"
+                                      AdornmentIcon="@Icons.Material.Filled.Link"
+                                      Margin="Margin.Dense" />
+                    </MudStack>
+                </MudPaper>
+
+                <MudAlert Severity="Severity.Info" Dense="true">
+                    Only fields you fill in will override the server-side <code>appsettings.json</code> values.
+                    Clear a field to remove that override and revert to the server default.
+                </MudAlert>
+
+                @* Action buttons *@
+                <MudStack Row="true" Spacing="2" Class="flex-wrap">
+                    <MudButton Variant="Variant.Filled"
+                               Color="Color.Primary"
+                               StartIcon="@Icons.Material.Filled.Save"
+                               Disabled="@_savingEmailSettings"
+                               OnClick="@SaveEmailSettingsAsync">
+                        @if (_savingEmailSettings)
+                        {
+                            <MudProgressCircular Indeterminate="true" Size="Size.Small" Class="mr-2" />
+                            <text>Saving…</text>
+                        }
+                        else { <text>Save</text> }
+                    </MudButton>
+                    @if (_emailSettings?.HasOverrides == true)
+                    {
+                        <MudButton Variant="Variant.Outlined"
+                                   Color="Color.Warning"
+                                   StartIcon="@Icons.Material.Filled.RestartAlt"
+                                   Disabled="@_savingEmailSettings"
+                                   OnClick="@ClearEmailSettingsAsync">
+                            Clear overrides
+                        </MudButton>
+                    }
+                </MudStack>
+
+            </MudStack>
+        </MudTabPanel>
+
+        @* ════════════════════════════════════════════════════════════════════
+           Tab 4 — Display
            ════════════════════════════════════════════════════════════════════ *@
 
         <MudTabPanel Text="Display" Icon="@Icons.Material.Filled.DisplaySettings">
@@ -427,6 +582,20 @@
     private bool   _notifyOnApproval   = true;
     private bool   _notifyOnRemediation;
 
+    // ── State — Email Settings ────────────────────────────────────────────────
+
+    private EmailSettingsDto? _emailSettings;
+    private string  _emailSmtpHost        = string.Empty;
+    private int?    _emailSmtpPort;
+    private bool?   _emailUseSsl;
+    private string  _emailUsername        = string.Empty;
+    private string  _emailPassword        = string.Empty;
+    private string  _emailFromAddress     = string.Empty;
+    private string  _emailFromName        = string.Empty;
+    private string  _emailDashboardBaseUrl = string.Empty;
+    private bool    _showEmailPassword;
+    private bool    _savingEmailSettings;
+
     // ── State — Display ───────────────────────────────────────────────────────
 
     private int _refreshInterval = 30;
@@ -453,6 +622,10 @@
         _notifyOnFailure      = ParseBool(await GetStoredAsync("adf:settings:notifyOnFailure"),    true);
         _notifyOnApproval     = ParseBool(await GetStoredAsync("adf:settings:notifyOnApproval"),   true);
         _notifyOnRemediation  = ParseBool(await GetStoredAsync("adf:settings:notifyOnRemediation"), false);
+
+        // Email settings overrides
+        try { await LoadEmailSettingsAsync(); }
+        catch { /* non-fatal — fields stay empty */ }
 
         // Display — reflect current LayoutState (already loaded from localStorage by MainLayout)
         _refreshInterval = LayoutState.RefreshIntervalSeconds;
@@ -604,6 +777,73 @@
         await SetStoredAsync("adf:settings:notifyOnApproval",     _notifyOnApproval.ToString().ToLowerInvariant());
         await SetStoredAsync("adf:settings:notifyOnRemediation",  _notifyOnRemediation.ToString().ToLowerInvariant());
     }
+
+    // ── Email settings actions ────────────────────────────────────────────────
+
+    private async Task LoadEmailSettingsAsync()
+    {
+        _emailSettings = await ApiClient.GetEmailSettingsAsync(_cts.Token);
+        if (_emailSettings is null) return;
+        _emailSmtpHost         = _emailSettings.SmtpHost;
+        _emailSmtpPort         = _emailSettings.SmtpPort;
+        _emailUseSsl           = _emailSettings.UseSsl;
+        _emailUsername         = _emailSettings.Username;
+        _emailPassword         = string.Empty; // never pre-fill password
+        _emailFromAddress      = _emailSettings.FromAddress;
+        _emailFromName         = _emailSettings.FromName;
+        _emailDashboardBaseUrl = _emailSettings.DashboardBaseUrl;
+    }
+
+    private async Task SaveEmailSettingsAsync()
+    {
+        _savingEmailSettings = true;
+        try
+        {
+            var req = new EmailSettingsRequest(
+                SmtpHost:         NullIfBlank(_emailSmtpHost),
+                SmtpPort:         _emailSmtpPort,
+                UseSsl:           _emailUseSsl,
+                Username:         NullIfBlank(_emailUsername),
+                Password:         NullIfBlank(_emailPassword),
+                FromAddress:      NullIfBlank(_emailFromAddress),
+                FromName:         NullIfBlank(_emailFromName),
+                DashboardBaseUrl: NullIfBlank(_emailDashboardBaseUrl));
+
+            _emailSettings = await ApiClient.SetEmailSettingsAsync(req, _cts.Token);
+            _emailPassword = string.Empty; // clear password field after save
+            Snackbar.Add("Email settings saved.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to save email settings: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _savingEmailSettings = false;
+        }
+    }
+
+    private async Task ClearEmailSettingsAsync()
+    {
+        _savingEmailSettings = true;
+        try
+        {
+            await ApiClient.ClearEmailSettingsAsync(_cts.Token);
+            await LoadEmailSettingsAsync();
+            Snackbar.Add("Email overrides cleared — server appsettings are now active.", Severity.Info);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to clear overrides: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _savingEmailSettings = false;
+        }
+    }
+
+    private static string? NullIfBlank(string? value)
+        => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     // ── Display actions ───────────────────────────────────────────────────────
 

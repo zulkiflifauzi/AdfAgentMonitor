@@ -55,7 +55,48 @@ public interface IMonitorApiClient
     /// Saves the notification recipient email addresses via <c>PUT /api/settings/notifications</c>.
     /// </summary>
     Task SetNotificationRecipientsAsync(List<string> emails, CancellationToken ct = default);
+
+    /// <summary>
+    /// Returns the effective email (SMTP) settings — appsettings values overlaid with any DB overrides.
+    /// Password is never returned; <c>HasPassword</c> indicates whether one is stored.
+    /// </summary>
+    Task<EmailSettingsDto?> GetEmailSettingsAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Saves email settings overrides via <c>PUT /api/settings/email</c>.
+    /// Pass <c>null</c> for any field to remove that override (revert to appsettings).
+    /// Pass <c>null</c> for <c>Password</c> to leave the stored password unchanged.
+    /// </summary>
+    Task<EmailSettingsDto?> SetEmailSettingsAsync(EmailSettingsRequest request, CancellationToken ct = default);
+
+    /// <summary>
+    /// Clears all email settings overrides via <c>DELETE /api/settings/email</c>.
+    /// </summary>
+    Task ClearEmailSettingsAsync(CancellationToken ct = default);
 }
 
 /// <summary>Result of a Test Connection call.</summary>
 public record ConnectionTestResult(bool Success, string Message);
+
+/// <summary>Effective email settings returned by GET /api/settings/email.</summary>
+public record EmailSettingsDto(
+    string SmtpHost,
+    int    SmtpPort,
+    bool   UseSsl,
+    string Username,
+    bool   HasPassword,
+    string FromAddress,
+    string FromName,
+    string DashboardBaseUrl,
+    bool   HasOverrides);
+
+/// <summary>Payload for PUT /api/settings/email. Null fields remove the override for that setting.</summary>
+public record EmailSettingsRequest(
+    string? SmtpHost,
+    int?    SmtpPort,
+    bool?   UseSsl,
+    string? Username,
+    string? Password,
+    string? FromAddress,
+    string? FromName,
+    string? DashboardBaseUrl);
