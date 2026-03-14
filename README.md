@@ -24,7 +24,7 @@ Azure Data Factory
   └── High risk or manual-review codes → PendingApproval
       │
       ▼
- NotifierAgent  (MailKit → HTML email to configured recipient)
+ NotifierAgent  (MailKit → HTML email to all configured recipients)
       │
       ├── [Auto-resolved]  → "RESOLVED" email
       └── [PendingApproval] → email with link to /approvals dashboard
@@ -121,7 +121,7 @@ The credential is used by the ADF ARM client only.
 | `Email:FromName` | `EMAIL__FROMNAME` | No | Sender display name (default: `ADF Agent Monitor`) |
 | `Email:DashboardBaseUrl` | `EMAIL__DASHBOARDBASEURL` | No | Base URL of the Dashboard (e.g. `https://dashboard.example.com`). Used to build the "Open Approvals" link in emails. |
 
-The notification **recipient** email is not in config — it is stored in the database and managed via **Settings → Notifications** in the Dashboard (or `PUT /api/settings/notifications`).
+Notification **recipients** are not in config — they are stored in the database and managed via **Settings → Notifications** in the Dashboard (or `PUT /api/settings/notifications`). Multiple recipients are supported; all receive the same email in a single send.
 
 ### Anthropic
 
@@ -328,7 +328,7 @@ The service principal (or Managed Identity) needs:
 3. **FixAgent** routes the run:
    - Auto-remediated (SinkThrottled / IROffline, Low/Medium risk) → `Status = Resolved`
    - Everything else → `Status = PendingApproval`, `ApprovalStatus = Pending`
-4. **NotifierAgent** sends an HTML email to the configured recipient
+4. **NotifierAgent** sends an HTML email to all configured recipients
    - Resolved runs: informational "auto-resolved" email
    - PendingApproval runs: email with a link to the `/approvals` page on the Dashboard
 5. An operator opens the Dashboard → Approvals page and clicks **Approve**

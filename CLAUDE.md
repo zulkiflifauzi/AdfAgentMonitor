@@ -107,7 +107,7 @@ The shared kernel. Zero external NuGet dependencies. Everything else depends on 
 - `DiagnosisResult` — structured output from DiagnosticsAgent (cause category, confidence, affected datasets, root cause narrative)
 - `RemediationProposal` — a ranked list of candidate fixes with risk levels
 - `ApprovalRequest` / `ApprovalOutcome` — approval correlation identifiers and results
-- `NotificationSettings` — single-row entity persisting the recipient email address
+- `NotificationSettings` — single-row entity persisting the comma-separated list of recipient email addresses
 - `AuditEntry` — append-only log row (who/what/when/old state/new state)
 
 **Interfaces**
@@ -115,8 +115,8 @@ The shared kernel. Zero external NuGet dependencies. Everything else depends on 
 - `IPipelineRunStateRepository` — CRUD + state-transition queries
 - `IAuditRepository` — append-only write
 - `IAdfService` — ADF run queries and rerun/cancel commands
-- `IEmailNotifierService` — send HTML notification email; send outcome email after approval decision
-- `INotificationSettingsRepository` — read/write the recipient email from the `NotificationSettings` table
+- `IEmailNotifierService` — send HTML notification email to all configured recipients; send outcome email after approval decision
+- `INotificationSettingsRepository` — read/write the recipient email list from the `NotificationSettings` table
 - `IApprovalStore` — read pending approvals by correlation ID
 
 **Enums**
@@ -198,8 +198,8 @@ Adapters for every external system. Implements all interfaces from Core. No busi
 - Exposes: `GetFailedRunsSinceAsync`, `GetRunLogsAsync`, `TriggerRunAsync`, `CancelRunAsync`.
 
 **Email Integration**
-- `EmailNotifierService` — MailKit SMTP client; builds HTML email bodies; reads the recipient from `INotificationSettingsRepository`; never throws.
-- `NotificationSettingsRepository` — single-row upsert for the recipient email address.
+- `EmailNotifierService` — MailKit SMTP client; builds HTML email bodies; reads all recipients from `INotificationSettingsRepository` and adds each to `message.To`; never throws.
+- `NotificationSettingsRepository` — single-row upsert; stores recipients as a comma-separated string in `RecipientEmails`.
 - SMTP configuration lives in `Email:*` appsettings keys (`SmtpHost`, `SmtpPort`, `UseSsl`, `Username`, `Password`, `FromAddress`, `FromName`, `DashboardBaseUrl`).
 - Dev default points at `localhost:1025` (MailHog or any local SMTP relay).
 
@@ -358,8 +358,8 @@ All endpoints require the `X-Api-Key` header. Responses use camelCase JSON with 
 | `POST` | `/api/approvals/{id}/reject` | X-Api-Key | body: `{ "reason": "…" }` | 200 OK |
 | `GET` | `/api/activity` | X-Api-Key | `agentName`, `success`, `from`, `to`, `page`, `pageSize` | `{ items, totalCount, page, pageSize }` |
 | `GET` | `/api/health` | X-Api-Key | — | `{ status: "ok", timestamp }` |
-| `GET` | `/api/settings/notifications` | X-Api-Key | — | `{ recipientEmail }` |
-| `PUT` | `/api/settings/notifications` | X-Api-Key | body: `{ "recipientEmail": "…" }` | `{ recipientEmail }` |
+| `GET` | `/api/settings/notifications` | X-Api-Key | — | `{ recipientEmails: string[] }` |
+| `PUT` | `/api/settings/notifications` | X-Api-Key | body: `{ "recipientEmails": ["…"] }` | `{ recipientEmails: string[] }` |
 
 **CORS:** The Api reads allowed origins from `Cors:AllowedOrigins` in `appsettings.json`. Development defaults: `http://localhost:5071`, `https://localhost:7071`, `http://localhost:5000`, `https://localhost:7000`.
 
