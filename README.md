@@ -229,22 +229,31 @@ Alternatively, leave this file empty and set the values after launch via **Setti
 
 ### 5. Run all three hosts
 
-Open three terminals:
+**Option A — single command (recommended)**
+
+```powershell
+.\dev-start.ps1
+```
+
+This opens Worker, Api, and Dashboard each in a separate PowerShell window with the correct
+`--urls` already set. Press **Enter** in the orchestrator window to stop all three.
+
+**Option B — manual (three terminals)**
 
 ```bash
 # Terminal 1 — background job processor
 dotnet run --project src/AdfAgentMonitor.Worker
 
 # Terminal 2 — approval webhook + dashboard API
-dotnet run --project src/AdfAgentMonitor.Api
+dotnet run --project src/AdfAgentMonitor.Api --urls "https://localhost:7059;http://localhost:5070"
 
 # Terminal 3 — Blazor WebAssembly dashboard
-dotnet run --project src/AdfAgentMonitor.Dashboard
+dotnet run --project src/AdfAgentMonitor.Dashboard --urls "https://localhost:7071;http://localhost:5071"
 ```
 
 The Dashboard will be available at `https://localhost:7071` (or `http://localhost:5071`).
-Check `src/AdfAgentMonitor.Dashboard/Properties/launchSettings.json` for the exact ports and
-ensure they match the `Cors:AllowedOrigins` list in `appsettings.Development.json`.
+Ensure these ports are listed in the `Cors:AllowedOrigins` array in
+`src/AdfAgentMonitor.Api/appsettings.Development.json`.
 
 ---
 
