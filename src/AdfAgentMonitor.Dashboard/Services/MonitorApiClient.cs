@@ -149,6 +149,25 @@ public class MonitorApiClient(HttpClient http) : IMonitorApiClient
         return (await response.Content.ReadFromJsonAsync<ActivityPage>(JsonOptions, ct))!;
     }
 
+    public async Task<string?> GetNotificationRecipientAsync(CancellationToken ct = default)
+    {
+        var response = await http.GetAsync("api/settings/notifications", ct);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return null;
+        await EnsureSuccessAsync(response, ct);
+        var obj = await response.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>(ct);
+        return obj.TryGetProperty("recipientEmail", out var prop) ? prop.GetString() : null;
+    }
+
+    public async Task SetNotificationRecipientAsync(string email, CancellationToken ct = default)
+    {
+        var response = await http.PutAsJsonAsync(
+            "api/settings/notifications",
+            new { RecipientEmail = email },
+            JsonOptions,
+            ct);
+        await EnsureSuccessAsync(response, ct);
+    }
+
     // -------------------------------------------------------------------------
 
     private static async Task EnsureSuccessAsync(HttpResponseMessage response, CancellationToken ct)

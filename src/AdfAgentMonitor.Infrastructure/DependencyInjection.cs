@@ -10,7 +10,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
-using Microsoft.Graph;
 using Microsoft.SemanticKernel.ChatCompletion;
 
 namespace AdfAgentMonitor.Infrastructure;
@@ -33,6 +32,7 @@ public static class DependencyInjection
         services.Configure<TeamsSettings>(configuration.GetSection(TeamsSettings.SectionName));
         services.Configure<AnthropicSettings>(configuration.GetSection(AnthropicSettings.SectionName));
         services.Configure<HangfireSettings>(configuration.GetSection(HangfireSettings.SectionName));
+        services.Configure<EmailSettings>(configuration.GetSection(EmailSettings.SectionName));
 
         // ---------------------------------------------------------------------------
         // Azure credential — shared by ArmClient (ADF) and GraphServiceClient (Teams).
@@ -70,6 +70,7 @@ public static class DependencyInjection
 
         services.AddScoped<IPipelineRunStateRepository, PipelineRunStateRepository>();
         services.AddScoped<IAgentActivityLogRepository, AgentActivityLogRepository>();
+        services.AddScoped<INotificationSettingsRepository, NotificationSettingsRepository>();
 
         // ---------------------------------------------------------------------------
         // Azure Data Factory service
@@ -78,16 +79,10 @@ public static class DependencyInjection
         services.AddScoped<IAdfService, AdfService>();
 
         // ---------------------------------------------------------------------------
-        // Microsoft Graph — Teams notifications
-        // GraphServiceClient is thread-safe and expensive to construct; use Singleton.
+        // Email notifications (MailKit SMTP)
         // ---------------------------------------------------------------------------
 
-        services.AddSingleton(sp =>
-            new GraphServiceClient(
-                sp.GetRequiredService<TokenCredential>(),
-                ["https://graph.microsoft.com/.default"]));
-
-        services.AddScoped<ITeamsNotifierService, TeamsNotifierService>();
+        services.AddScoped<IEmailNotifierService, EmailNotifierService>();
 
         // ---------------------------------------------------------------------------
         // Anthropic SDK → Semantic Kernel IChatCompletionService adapter

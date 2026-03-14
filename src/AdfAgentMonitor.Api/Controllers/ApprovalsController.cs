@@ -8,14 +8,14 @@ namespace AdfAgentMonitor.Api.Controllers;
 
 /// <summary>
 /// Handles human approval decisions for pipeline remediation requests.
-/// Both endpoints are invoked via the Approve / Reject buttons in the Teams Adaptive Card.
+/// Both endpoints are invoked via the Approve / Reject buttons in the Dashboard.
 /// </summary>
 [ApiController]
 [Route("api/approvals")]
 [ServiceFilter(typeof(ApiKeyAuthFilter))]
 public class ApprovalsController(
     IPipelineRunStateRepository repository,
-    ITeamsNotifierService teamsNotifier,
+    IEmailNotifierService emailNotifier,
     PipelineMonitorOrchestrator orchestrator,
     ILogger<ApprovalsController> logger) : ControllerBase
 {
@@ -24,13 +24,12 @@ public class ApprovalsController(
     // ---------------------------------------------------------------------------
 
     /// <summary>
-    /// Records an approval decision, re-queues FixAgent, and updates the Teams card.
+    /// Records an approval decision, re-queues FixAgent, and sends an outcome email.
     /// </summary>
     /// <remarks>
     /// State transitions: <c>PendingApproval</c> → <c>Remediating</c>.
     /// A Fix → Notify Hangfire chain is enqueued so the team sees the final outcome.
-    /// The existing Teams card body is updated to reflect the approval immediately.
-    /// <c>TeamsMessageId</c> is cleared so the post-fix NotifierAgent can post a fresh card.
+    /// An outcome email is sent immediately to reflect the approval decision.
     /// </remarks>
     [HttpPost("{id:guid}/approve")]
     [ProducesResponseType(StatusCodes.Status200OK)]
@@ -51,13 +50,8 @@ public class ApprovalsController(
                         "No action taken."
             });
 
-        var oldMessageId = state.TeamsMessageId;
-
         state.ApprovalStatus = "Approved";
         state.Status         = PipelineRunStatus.Remediating;
-        // Clear so RunNotifierAsync (after FixAgent completes) can post a fresh outcome
-        // card rather than being skipped by the duplicate-notification idempotency guard.
-        state.TeamsMessageId = null;
 
         await repository.UpdateAsync(state, ct);
 
@@ -65,9 +59,8 @@ public class ApprovalsController(
             "Approval granted for stateId={StateId} pipeline={PipelineName}.",
             id, state.PipelineName);
 
-        // Update the existing Teams card body to show the approval immediately.
-        if (oldMessageId is not null)
-            await teamsNotifier.UpdateCardOutcomeAsync(oldMessageId, "approved", ct);
+        // Send an outcome email to notify the recipient of the approval.
+        await emailNotifier.SendOutcomeEmailAsync(state, "approved", ct);
 
         // Enqueue Fix → Notify so remediation proceeds and the team sees the final result.
         orchestrator.EnqueueFixChain(state.Id, state.PipelineName);
@@ -89,7 +82,7 @@ public class ApprovalsController(
     /// <remarks>
     /// State transitions: <c>PendingApproval</c> → <c>Resolved</c>.
     /// No remediation is attempted. NotifierAgent is enqueued to post a final
-    /// "RESOLVED" card so the team knows the request was closed without action.
+    /// "RESOLVED" email so the team knows the request was closed without action.
     /// </remarks>
     [HttpPost("{id:guid}/reject")]
     [ProducesResponseType(StatusCodes.Status200OK)]
@@ -110,14 +103,9 @@ public class ApprovalsController(
                         "No action taken."
             });
 
-        var oldMessageId = state.TeamsMessageId;
-
         state.ApprovalStatus = "Rejected";
         state.Status         = PipelineRunStatus.Resolved;
         state.ResolvedAt     = DateTimeOffset.UtcNow;
-        // Clear so NotifierAgent can post a fresh "RESOLVED" card informing the team
-        // of the rejection outcome.
-        state.TeamsMessageId = null;
 
         await repository.UpdateAsync(state, ct);
 
@@ -125,11 +113,10 @@ public class ApprovalsController(
             "Approval rejected for stateId={StateId} pipeline={PipelineName}.",
             id, state.PipelineName);
 
-        // Update the existing Teams card body to show the rejection immediately.
-        if (oldMessageId is not null)
-            await teamsNotifier.UpdateCardOutcomeAsync(oldMessageId, "rejected", ct);
+        // Send an outcome email to notify the recipient of the rejection.
+        await emailNotifier.SendOutcomeEmailAsync(state, "rejected", ct);
 
-        // Enqueue NotifierAgent to post a new resolution card informing the team.
+        // Enqueue NotifierAgent to send a resolution email informing the team.
         orchestrator.EnqueueNotifier(state.Id, state.PipelineName);
 
         return Ok(new

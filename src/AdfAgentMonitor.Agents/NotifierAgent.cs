@@ -6,12 +6,10 @@ using Microsoft.Extensions.Logging;
 namespace AdfAgentMonitor.Agents;
 
 /// <summary>
-/// Posts a Teams Adaptive Card for any pipeline run state.
+/// Sends an HTML email notification for any pipeline run state.
 /// <para>
-/// When <see cref="Core.Enums.PipelineRunStatus.PendingApproval"/> the card includes
-/// Approve and Reject action buttons. All other statuses produce an informational card.
-/// The Graph message ID is stored in <see cref="PipelineRunState.TeamsMessageId"/>
-/// so the card can be updated when an approval decision arrives.
+/// When <see cref="Core.Enums.PipelineRunStatus.PendingApproval"/> the email includes
+/// a link to the Approvals Dashboard. All other statuses produce an informational email.
 /// </para>
 /// </summary>
 /// <remarks>
@@ -20,8 +18,7 @@ namespace AdfAgentMonitor.Agents;
 /// status changes.
 /// </remarks>
 public class NotifierAgent(
-    ITeamsNotifierService notifierService,
-    IPipelineRunStateRepository repository,
+    IEmailNotifierService notifierService,
     IAgentActivityLogRepository activityLog,
     ILogger<NotifierAgent> logger) : IAgent
 {
@@ -32,31 +29,22 @@ public class NotifierAgent(
     public async Task<AgentResult> ExecuteAsync(PipelineRunState state, CancellationToken ct)
     {
         logger.LogInformation(
-            "NotifierAgent posting card for pipeline {PipelineName} (runId={RunId}, status={Status}).",
+            "NotifierAgent sending email for pipeline {PipelineName} (runId={RunId}, status={Status}).",
             state.PipelineName, state.PipelineRunId, state.Status);
 
-        var messageId = await notifierService.SendNotificationAsync(state, ct);
+        var success = await notifierService.SendNotificationAsync(state, ct);
 
-        if (messageId is null)
+        if (!success)
         {
             logger.LogWarning(
-                "NotifierAgent could not post Teams card for runId={RunId}. " +
-                "Continuing without a message ID.",
+                "NotifierAgent could not send email for runId={RunId}.",
                 state.PipelineRunId);
 
             return new AgentResult(
                 Success:    false,
-                Message:    "Teams card post failed — see logs for details.",
+                Message:    "Email send failed — see logs.",
                 NextStatus: state.Status);
         }
-
-        // Persist the Graph message ID so approval updates can target the card.
-        state.TeamsMessageId = messageId;
-        await repository.UpdateAsync(state, ct);
-
-        logger.LogInformation(
-            "NotifierAgent stored TeamsMessageId={MessageId} for runId={RunId}.",
-            messageId, state.PipelineRunId);
 
         try
         {
@@ -66,8 +54,8 @@ public class NotifierAgent(
                 AgentName     = "NotifierAgent",
                 PipelineRunId = state.Id,
                 PipelineName  = state.PipelineName,
-                Action        = "Posted Teams notification",
-                ResultMessage = $"Teams card posted (messageId={messageId}).",
+                Action        = "Sent email notification",
+                ResultMessage = $"Email sent to configured recipient (status={state.Status}).",
                 Success       = true,
                 Timestamp     = DateTimeOffset.UtcNow,
             }, ct);
@@ -79,7 +67,7 @@ public class NotifierAgent(
 
         return new AgentResult(
             Success:    true,
-            Message:    $"Teams card posted (messageId={messageId}).",
+            Message:    "Email notification sent.",
             NextStatus: state.Status);
     }
 }

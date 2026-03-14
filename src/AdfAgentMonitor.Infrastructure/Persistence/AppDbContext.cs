@@ -6,8 +6,9 @@ namespace AdfAgentMonitor.Infrastructure.Persistence;
 
 public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
 {
-    public DbSet<PipelineRunState> PipelineRunStates   => Set<PipelineRunState>();
-    public DbSet<AgentActivityLog> AgentActivityLogs   => Set<AgentActivityLog>();
+    public DbSet<PipelineRunState>    PipelineRunStates    => Set<PipelineRunState>();
+    public DbSet<AgentActivityLog>   AgentActivityLogs    => Set<AgentActivityLog>();
+    public DbSet<NotificationSettings> NotificationSettings => Set<NotificationSettings>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -126,6 +127,15 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
             entity.HasIndex(e => new { e.FactoryName, e.Status })
                   .HasDatabaseName("IX_PipelineRunStates_FactoryName_Status");
+        });
+
+        modelBuilder.Entity<NotificationSettings>(e =>
+        {
+            e.ToTable("NotificationSettings");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).ValueGeneratedNever();
+            e.Property(x => x.RecipientEmail).HasMaxLength(256).IsRequired();
+            e.Property(x => x.UpdatedAt).IsRequired();
         });
     }
 }

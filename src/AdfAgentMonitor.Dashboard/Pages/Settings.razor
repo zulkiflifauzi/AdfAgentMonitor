@@ -137,6 +137,37 @@
         <MudTabPanel Text="Notifications" Icon="@Icons.Material.Filled.Notifications">
             <MudStack Spacing="4">
 
+                @* Email recipient *@
+                <MudPaper Elevation="0"
+                          Style="border:1px solid var(--mud-palette-divider); border-radius:8px"
+                          Class="pa-4">
+                    <MudStack Spacing="3">
+                        <MudStack Spacing="0">
+                            <MudText Typo="Typo.body1" Style="font-weight:600">Email notification recipient</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                Email address that receives pipeline failure and approval notifications.
+                            </MudText>
+                        </MudStack>
+                        <MudTextField @bind-Value="_recipientEmail"
+                                      Label="Recipient Email"
+                                      Variant="Variant.Outlined"
+                                      Placeholder="ops-team@example.com"
+                                      InputType="InputType.Email"
+                                      Adornment="Adornment.Start"
+                                      AdornmentIcon="@Icons.Material.Filled.Email" />
+                        <MudButton Variant="Variant.Filled"
+                                   Color="Color.Primary"
+                                   StartIcon="@Icons.Material.Filled.Save"
+                                   Disabled="@_savingRecipient"
+                                   OnClick="@SaveRecipientAsync">
+                            @if (_savingRecipient) { <MudProgressCircular Indeterminate="true" Size="Size.Small" Class="mr-2" /><text>Saving…</text> }
+                            else { <text>Save</text> }
+                        </MudButton>
+                    </MudStack>
+                </MudPaper>
+
+                <MudDivider />
+
                 @* Permission status banner *@
                 @if (_notificationPermission == "denied")
                 {
@@ -351,6 +382,9 @@
 
     // ── State — Notifications ─────────────────────────────────────────────────
 
+    private string _recipientEmail   = string.Empty;
+    private bool   _savingRecipient;
+
     private string _notificationPermission = "default";
     private bool   _notificationsEnabled;
     private bool   _notifyOnFailure    = true;
@@ -370,6 +404,10 @@
         // Connection
         _apiBaseUrl = await GetStoredAsync("adf:settings:apiBaseUrl") ?? string.Empty;
         _apiKey     = await GetStoredAsync("adf:settings:apiKey")     ?? string.Empty;
+
+        // Notifications — email recipient
+        try { _recipientEmail = await ApiClient.GetNotificationRecipientAsync(_cts.Token) ?? string.Empty; }
+        catch { _recipientEmail = string.Empty; }
 
         // Notifications
         try { _notificationPermission = await JS.InvokeAsync<string>("adfNotifications.getPermission"); }
@@ -463,6 +501,24 @@
     }
 
     // ── Notifications actions ─────────────────────────────────────────────────
+
+    private async Task SaveRecipientAsync()
+    {
+        _savingRecipient = true;
+        try
+        {
+            await ApiClient.SetNotificationRecipientAsync(_recipientEmail.Trim(), _cts.Token);
+            Snackbar.Add("Notification recipient saved.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to save recipient: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _savingRecipient = false;
+        }
+    }
 
     private async Task OnNotificationsEnabledChangedAsync(bool value)
     {
