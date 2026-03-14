@@ -76,9 +76,12 @@ $processes = [System.Collections.Generic.List[System.Diagnostics.Process]]::new(
 foreach ($svc in $services) {
     $projectPath = Join-Path $root $svc.Project
     $urlsArg     = if ($svc.Urls) { " --urls '$($svc.Urls)'" } else { '' }
-    $runCmd      = "dotnet run --project '$projectPath'$urlsArg"
 
-    $proc = Start-ServiceWindow -Title $svc.Name -WorkingDirectory $root -Command $runCmd
+    # Run from the project directory — Blazor WASM's WasmAppHost resolves
+    # the runtime config relative to cwd, not the --project path.
+    $runCmd = "dotnet run$urlsArg"
+
+    $proc = Start-ServiceWindow -Title $svc.Name -WorkingDirectory $projectPath -Command $runCmd
     $processes.Add($proc)
 
     Write-Host "  + Started $($svc.Name)  (PID $($proc.Id))" -ForegroundColor $svc.Color
