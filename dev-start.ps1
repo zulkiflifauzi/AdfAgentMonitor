@@ -27,13 +27,31 @@ $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
 
 # ---------------------------------------------------------------------------
+# Helper — launches a command in a new PowerShell window.
+# Uses -EncodedCommand to avoid all quoting/escaping issues.
+# ---------------------------------------------------------------------------
+function Start-ServiceWindow {
+    param(
+        [string] $Title,
+        [string] $WorkingDirectory,
+        [string] $Command
+    )
+
+    $script  = "`$host.UI.RawUI.WindowTitle = '$Title'; Set-Location '$WorkingDirectory'; $Command"
+    $bytes   = [System.Text.Encoding]::Unicode.GetBytes($script)
+    $encoded = [Convert]::ToBase64String($bytes)
+
+    return Start-Process powershell -ArgumentList '-NoExit', '-EncodedCommand', $encoded -PassThru
+}
+
+# ---------------------------------------------------------------------------
 # Service definitions
 # ---------------------------------------------------------------------------
 $services = @(
     [PSCustomObject]@{
         Name    = 'ADF Worker'
         Project = 'src\AdfAgentMonitor.Worker'
-        Urls    = $null                                        # Worker has no HTTP server
+        Urls    = $null
         Color   = 'Cyan'
     },
     [PSCustomObject]@{
@@ -56,32 +74,28 @@ $services = @(
 $processes = [System.Collections.Generic.List[System.Diagnostics.Process]]::new()
 
 foreach ($svc in $services) {
-    $urlsArg = if ($svc.Urls) { " --urls `"$($svc.Urls)`"" } else { '' }
-    $runCmd  = "dotnet run --project `"$root\$($svc.Project)`"$urlsArg"
+    $projectPath = Join-Path $root $svc.Project
+    $urlsArg     = if ($svc.Urls) { " --urls '$($svc.Urls)'" } else { '' }
+    $runCmd      = "dotnet run --project '$projectPath'$urlsArg"
 
-    # Set the child window title then run the project
-    $psCmd = "`$host.UI.RawUI.WindowTitle = '$($svc.Name)'; $runCmd"
-
-    $proc = Start-Process powershell `
-        -ArgumentList '-NoExit', '-Command', $psCmd `
-        -PassThru
-
+    $proc = Start-ServiceWindow -Title $svc.Name -WorkingDirectory $root -Command $runCmd
     $processes.Add($proc)
-    Write-Host "  ✓ Started $($svc.Name)  (PID $($proc.Id))" -ForegroundColor $svc.Color
+
+    Write-Host "  + Started $($svc.Name)  (PID $($proc.Id))" -ForegroundColor $svc.Color
 }
 
 # ---------------------------------------------------------------------------
 # Print URLs and wait
 # ---------------------------------------------------------------------------
 Write-Host ''
-Write-Host '─────────────────────────────────────────────' -ForegroundColor DarkGray
-Write-Host '  ADF Agent Monitor — all services running' -ForegroundColor White
-Write-Host '─────────────────────────────────────────────' -ForegroundColor DarkGray
-Write-Host '  Api       https://localhost:7059' -ForegroundColor Yellow
-Write-Host '  Api (http) http://localhost:5070' -ForegroundColor Yellow
-Write-Host '  Dashboard https://localhost:7071' -ForegroundColor Green
-Write-Host '  Dashboard (http) http://localhost:5071' -ForegroundColor Green
-Write-Host '─────────────────────────────────────────────' -ForegroundColor DarkGray
+Write-Host '---------------------------------------------' -ForegroundColor DarkGray
+Write-Host '  ADF Agent Monitor -- all services running' -ForegroundColor White
+Write-Host '---------------------------------------------' -ForegroundColor DarkGray
+Write-Host '  Api        https://localhost:7059' -ForegroundColor Yellow
+Write-Host '  Api (http)  http://localhost:5070' -ForegroundColor Yellow
+Write-Host '  Dashboard  https://localhost:7071' -ForegroundColor Green
+Write-Host '  Dashboard   http://localhost:5071' -ForegroundColor Green
+Write-Host '---------------------------------------------' -ForegroundColor DarkGray
 Write-Host ''
 Write-Host '  Press Enter to stop all services and exit.' -ForegroundColor DarkGray
 Write-Host ''
@@ -90,14 +104,10 @@ try {
     Read-Host | Out-Null
 }
 finally {
-    # ---------------------------------------------------------------------------
-    # Graceful shutdown — stop children regardless of how we exit
-    # ---------------------------------------------------------------------------
     Write-Host 'Stopping services...' -ForegroundColor Red
 
     foreach ($proc in $processes) {
         if (-not $proc.HasExited) {
-            # Send Ctrl+C to dotnet (graceful) then force-kill after 5 s if needed
             try { $proc.CloseMainWindow() | Out-Null } catch { }
 
             if (-not $proc.WaitForExit(5000)) {
