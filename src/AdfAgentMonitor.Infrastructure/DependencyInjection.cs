@@ -69,6 +69,7 @@ public static class DependencyInjection
             options.UseSqlServer(configuration.GetConnectionString("DefaultConnection")));
 
         services.AddScoped<IPipelineRunStateRepository, PipelineRunStateRepository>();
+        services.AddScoped<IAgentActivityLogRepository, AgentActivityLogRepository>();
 
         // ---------------------------------------------------------------------------
         // Azure Data Factory service

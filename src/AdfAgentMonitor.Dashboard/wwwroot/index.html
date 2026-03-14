@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ADF Agent Monitor</title>
+    <base href="/" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,400,500,700&display=swap" />
+    <link href="_content/MudBlazor/MudBlazor.min.css" rel="stylesheet" />
+    <link rel="manifest" href="manifest.json" />
+    <link rel="apple-touch-icon" sizes="512x512" href="icon-512.png" />
+    <link href="css/app.css" rel="stylesheet" />
+</head>
+
+<body>
+    <div id="app">
+        <svg xmlns="http://www.w3.org/2000/svg" class="loading-progress">
+            <circle r="40%" cx="50%" cy="50%" />
+            <circle r="40%" cx="50%" cy="50%" />
+        </svg>
+        <div class="loading-progress-text"></div>
+    </div>
+
+    <div id="blazor-error-ui">
+        An unhandled error has occurred.
+        <a href="" class="reload">Reload</a>
+        <a class="dismiss">&#10006;</a>
+    </div>
+
+    <script src="_content/MudBlazor/MudBlazor.min.js"></script>
+    <script src="_framework/blazor.webassembly.js"></script>
+    <script>navigator.serviceWorker.register('service-worker.js');</script>
+    <script>
+        window.adfNotifications = {
+            getPermission: function () {
+                return typeof Notification !== 'undefined' ? Notification.permission : 'unsupported';
+            },
+            requestPermission: async function () {
+                if (typeof Notification === 'undefined') return 'unsupported';
+                return await Notification.requestPermission();
+            },
+            showNotification: function (title, body) {
+                if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+                new Notification(title, { body: body, icon: 'icon-512.png' });
+            }
+        };
+
+        window.adfOffline = {
+            _onlineHandler:  null,
+            _offlineHandler: null,
+            register: function (dotNetRef) {
+                this._onlineHandler  = () => dotNetRef.invokeMethodAsync('OnOnline');
+                this._offlineHandler = () => dotNetRef.invokeMethodAsync('OnOffline');
+                window.addEventListener('online',  this._onlineHandler);
+                window.addEventListener('offline', this._offlineHandler);
+                return navigator.onLine;
+            },
+            unregister: function () {
+                if (this._onlineHandler)  window.removeEventListener('online',  this._onlineHandler);
+                if (this._offlineHandler) window.removeEventListener('offline', this._offlineHandler);
+                this._onlineHandler  = null;
+                this._offlineHandler = null;
+            }
+        };
+    </script>
+</body>
+
+</html>

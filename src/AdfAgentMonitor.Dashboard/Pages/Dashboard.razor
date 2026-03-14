@@ -1,0 +1,564 @@
+@page "/"
+@using System.Threading
+@inject IMonitorApiClient ApiClient
+@inject LayoutState LayoutState
+@implements IAsyncDisposable
+
+<PageTitle>Dashboard — ADF Agent Monitor</PageTitle>
+
+@* ── Loading bar + error alert ──────────────────────────────────────────── *@
+
+@if (_loading && !_allRuns.Any())
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="mb-4" />
+}
+
+@if (_errorMessage is not null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-4" ShowCloseIcon="true"
+              CloseIconClicked="@(() => _errorMessage = null)">
+        @_errorMessage
+    </MudAlert>
+}
+
+@* ── Page header ─────────────────────────────────────────────────────────── *@
+
+<MudStack Spacing="6">
+
+    <div>
+        <MudText Typo="Typo.h4" Style="font-weight:700">Pipeline Dashboard</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">
+            @DateTime.UtcNow.ToString("dddd, MMMM d yyyy") · live agent monitoring
+        </MudText>
+    </div>
+
+    @* ── Stat cards ─────────────────────────────────────────────────────── *@
+
+    <MudGrid Spacing="3">
+        @StatCard("Total Runs Today",  TotalToday,     TotalYesterday,     Icons.Material.Filled.PlayCircle,    "#0F6E56", lowerIsBetter: false)
+        @StatCard("Failed Runs",        FailedToday,    FailedYesterday,    Icons.Material.Filled.Error,         "var(--mud-palette-error)", lowerIsBetter: true)
+        @StatCard("Auto-remediated",    RemediatedToday,RemediatedYesterday,Icons.Material.Filled.AutoFixHigh,  "#7C3AED", lowerIsBetter: false)
+        @StatCard("Pending Approval",   PendingToday,   PendingYesterday,   Icons.Material.Filled.PendingActions,"#F59E0B", lowerIsBetter: true)
+    </MudGrid>
+
+    @* ── Main content row ───────────────────────────────────────────────── *@
+
+    <MudGrid Spacing="3">
+
+        @* ── Recent pipeline runs ── *@
+        <MudItem xs="12" md="8">
+            <MudPaper Elevation="1" Class="pa-0">
+
+                <MudStack Row="true" AlignItems="AlignItems.Center"
+                          Justify="Justify.SpaceBetween" Class="pa-4 pb-0">
+                    <div>
+                        <MudText Typo="Typo.subtitle1" Style="font-weight:600">
+                            Recent Pipeline Runs
+                        </MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                            Most recent 20 · click a row for details
+                        </MudText>
+                    </div>
+                    <MudTooltip Text="Refresh now">
+                        <MudIconButton Icon="@Icons.Material.Filled.Refresh"
+                                       Size="Size.Small"
+                                       Disabled="@_loading"
+                                       OnClick="@RefreshNow" />
+                    </MudTooltip>
+                </MudStack>
+
+                <MudDataGrid T="PipelineRunState"
+                             Items="@RecentRuns"
+                             RowClick="@OnRowClick"
+                             RowClass="cursor-pointer"
+                             Hover="true"
+                             Dense="false"
+                             FixedHeader="true"
+                             Height="470px"
+                             Loading="@_loading"
+                             SortMode="SortMode.Single"
+                             Elevation="0">
+                    <Columns>
+
+                        <TemplateColumn Title="Pipeline" SortBy="@(x => x.PipelineName)">
+                            <CellTemplate>
+                                <MudStack Spacing="0">
+                                    <MudText Typo="Typo.body2" Style="font-weight:500">
+                                        @context.Item.PipelineName
+                                    </MudText>
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                        @context.Item.FactoryName
+                                    </MudText>
+                                </MudStack>
+                            </CellTemplate>
+                        </TemplateColumn>
+
+                        <TemplateColumn Title="Status" SortBy="@(x => x.Status)">
+                            <CellTemplate>
+                                @{ var (sc, sl) = GetStatusChip(context.Item.Status); }
+                                <MudChip T="string" Color="@sc" Size="Size.Small" Variant="Variant.Filled">
+                                    @sl
+                                </MudChip>
+                            </CellTemplate>
+                        </TemplateColumn>
+
+                        <TemplateColumn Title="Diagnosis" SortBy="@(x => x.DiagnosisCode)">
+                            <CellTemplate>
+                                <MudText Typo="Typo.body2">
+                                    @(context.Item.DiagnosisCode?.ToString() ?? "—")
+                                </MudText>
+                            </CellTemplate>
+                        </TemplateColumn>
+
+                        <TemplateColumn Title="Risk" SortBy="@(x => x.RemediationRisk)">
+                            <CellTemplate>
+                                @if (context.Item.RemediationRisk.HasValue)
+                                {
+                                    var (rc, rl) = GetRiskBadge(context.Item.RemediationRisk.Value);
+                                    <MudChip T="string" Color="@rc" Size="Size.Small" Variant="Variant.Outlined">
+                                        @rl
+                                    </MudChip>
+                                }
+                                else
+                                {
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">—</MudText>
+                                }
+                            </CellTemplate>
+                        </TemplateColumn>
+
+                        <TemplateColumn Title="Time" SortBy="@(x => x.CreatedAt)" InitialDirection="SortDirection.Descending">
+                            <CellTemplate>
+                                <MudTooltip Text="@context.Item.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")">
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                        @RelativeTime(context.Item.CreatedAt)
+                                    </MudText>
+                                </MudTooltip>
+                            </CellTemplate>
+                        </TemplateColumn>
+
+                    </Columns>
+                    <NoRecordsContent>
+                        <MudStack AlignItems="AlignItems.Center" Class="pa-10">
+                            <MudIcon Icon="@Icons.Material.Filled.CheckCircleOutline"
+                                     Color="Color.Success"
+                                     Style="font-size:3rem" />
+                            <MudText Typo="Typo.body1">No pipeline runs recorded</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                The monitor agent will populate this table as failures occur.
+                            </MudText>
+                        </MudStack>
+                    </NoRecordsContent>
+                </MudDataGrid>
+
+            </MudPaper>
+        </MudItem>
+
+        @* ── Agent activity feed ── *@
+        <MudItem xs="12" md="4">
+            <MudPaper Elevation="1" Class="pa-0" Style="display:flex; flex-direction:column; height:100%">
+
+                <div class="pa-4 pb-2" style="flex-shrink:0">
+                    <MudText Typo="Typo.subtitle1" Style="font-weight:600">Agent Activity</MudText>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Last 20 agent actions</MudText>
+                </div>
+
+                <MudDivider />
+
+                <div style="flex:1; overflow-y:auto; min-height:0; max-height:470px">
+                    @if (!ActivityFeed.Any() && !_loading)
+                    {
+                        <MudStack AlignItems="AlignItems.Center" Class="pa-10">
+                            <MudIcon Icon="@Icons.Material.Filled.SmartToy"
+                                     Color="Color.Secondary"
+                                     Style="font-size:3rem; opacity:0.4" />
+                            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                                No agent activity yet
+                            </MudText>
+                        </MudStack>
+                    }
+                    else
+                    {
+                        <MudTimeline TimelinePosition="TimelinePosition.Left" Class="mt-2 mb-2">
+                            @foreach (var ev in ActivityFeed)
+                            {
+                                <MudTimelineItem Color="@ev.IconColor"
+                                                Icon="@ev.Icon"
+                                                Size="Size.Small"
+                                                TimelineAlign="TimelineAlign.Start">
+                                    <ItemContent>
+                                        <MudStack Spacing="0" Class="pb-2">
+                                            <MudText Typo="Typo.caption"
+                                                     Style="font-weight:700; text-transform:uppercase; letter-spacing:0.4px"
+                                                     Color="@ev.IconColor">
+                                                @ev.AgentName
+                                            </MudText>
+                                            <MudText Typo="Typo.body2">@ev.Description</MudText>
+                                            <MudText Typo="Typo.caption" Color="Color.Secondary"
+                                                     Style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap">
+                                                @ev.PipelineName
+                                            </MudText>
+                                            <MudText Typo="Typo.caption" Color="Color.Secondary"
+                                                     Style="opacity:0.6">
+                                                @RelativeTime(ev.Timestamp)
+                                            </MudText>
+                                        </MudStack>
+                                    </ItemContent>
+                                </MudTimelineItem>
+                            }
+                        </MudTimeline>
+                    }
+                </div>
+
+            </MudPaper>
+        </MudItem>
+
+    </MudGrid>
+
+</MudStack>
+
+@* ── Run detail drawer ───────────────────────────────────────────────────── *@
+
+<MudDrawer @bind-Open="_detailOpen"
+           Anchor="Anchor.End"
+           Variant="DrawerVariant.Temporary"
+           Width="480px"
+           Fixed="true"
+           Elevation="4"
+           Class="drawer-panel">
+    @if (_selectedRun is not null)
+    {
+        <PipelineRunDetailPanel Run="@_selectedRun"
+                                OnClose="@CloseDetail"
+                                OnApproved="@HandlePanelApproved"
+                                OnRejected="@HandlePanelApproved" />
+    }
+</MudDrawer>
+
+@code {
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // State
+    // ──────────────────────────────────────────────────────────────────────────
+
+    private List<PipelineRunState> _allRuns = [];
+    private PipelineRunState?      _selectedRun;
+    private bool                   _detailOpen;
+    private bool                   _loading      = true;
+    private bool                   _isRefreshing;
+    private string?                _errorMessage;
+    private Timer?                 _refreshTimer;
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Lifecycle
+    // ──────────────────────────────────────────────────────────────────────────
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+
+        // Auto-refresh every 30 s.
+        // TimerCallback is sync-void; InvokeAsync marshals work onto Blazor's renderer.
+        _refreshTimer = new Timer(
+            _ => InvokeAsync(async () =>
+            {
+                await LoadAsync();
+                StateHasChanged();
+            }),
+            state:    null,
+            dueTime:  TimeSpan.FromSeconds(30),
+            period:   TimeSpan.FromSeconds(30));
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Data loading
+    // ──────────────────────────────────────────────────────────────────────────
+
+    private async Task LoadAsync()
+    {
+        if (_isRefreshing) return;
+        _isRefreshing = true;
+        _loading = true;
+
+        try
+        {
+            _allRuns       = await ApiClient.GetAllRunsAsync();
+            _errorMessage  = null;
+            LayoutState.SetApiConnected(true);
+            LayoutState.NotifyDataRefreshed();
+            LayoutState.SetPendingApprovalCount(_allRuns.Count(r => r.Status == PipelineRunStatus.PendingApproval));
+        }
+        catch (ApiException ex)
+        {
+            _errorMessage = $"API error {ex.StatusCode}: {ex.Message}";
+            LayoutState.SetApiConnected(false);
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Could not reach the API: {ex.Message}";
+            LayoutState.SetApiConnected(false);
+        }
+        finally
+        {
+            _loading      = false;
+            _isRefreshing = false;
+        }
+    }
+
+    private Task RefreshNow() => LoadAsync();
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Computed — stat card metrics
+    // ──────────────────────────────────────────────────────────────────────────
+
+    private static DateTimeOffset TodayStart     => new(DateTime.UtcNow.Date, TimeSpan.Zero);
+    private static DateTimeOffset YesterdayStart => TodayStart.AddDays(-1);
+
+    private int TotalToday
+        => _allRuns.Count(r => r.CreatedAt >= TodayStart);
+
+    private int TotalYesterday
+        => _allRuns.Count(r => r.CreatedAt >= YesterdayStart && r.CreatedAt < TodayStart);
+
+    private int FailedToday
+        => _allRuns.Count(r => r.CreatedAt >= TodayStart
+                             && r.Status == PipelineRunStatus.Failed);
+
+    private int FailedYesterday
+        => _allRuns.Count(r => r.CreatedAt >= YesterdayStart && r.CreatedAt < TodayStart
+                             && r.Status == PipelineRunStatus.Failed);
+
+    // Auto-remediated = resolved without a human approval step.
+    private int RemediatedToday
+        => _allRuns.Count(r => r.CreatedAt >= TodayStart
+                             && r.Status == PipelineRunStatus.Resolved
+                             && string.IsNullOrEmpty(r.ApprovalStatus));
+
+    private int RemediatedYesterday
+        => _allRuns.Count(r => r.CreatedAt >= YesterdayStart && r.CreatedAt < TodayStart
+                             && r.Status == PipelineRunStatus.Resolved
+                             && string.IsNullOrEmpty(r.ApprovalStatus));
+
+    private int PendingToday
+        => _allRuns.Count(r => r.CreatedAt >= TodayStart
+                             && r.Status == PipelineRunStatus.PendingApproval);
+
+    private int PendingYesterday
+        => _allRuns.Count(r => r.CreatedAt >= YesterdayStart && r.CreatedAt < TodayStart
+                             && r.Status == PipelineRunStatus.PendingApproval);
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Computed — grid and feed
+    // ──────────────────────────────────────────────────────────────────────────
+
+    private IReadOnlyList<PipelineRunState> RecentRuns
+        => [.. _allRuns.OrderByDescending(r => r.CreatedAt).Take(20)];
+
+    private IReadOnlyList<ActivityEvent> ActivityFeed
+        => BuildActivityFeed(_allRuns);
+
+    private static IReadOnlyList<ActivityEvent> BuildActivityFeed(List<PipelineRunState> runs)
+    {
+        var events = new List<ActivityEvent>(capacity: runs.Count * 3);
+
+        foreach (var run in runs.OrderByDescending(r => r.CreatedAt).Take(40))
+        {
+            // MonitorAgent — always first; timestamp is the actual failure time.
+            if (run.FailedAt.HasValue)
+                events.Add(new(run.FailedAt.Value, "MonitorAgent",
+                    "Detected pipeline failure",
+                    run.PipelineName,
+                    Icons.Material.Filled.Radar, Color.Secondary));
+
+            // DiagnosticsAgent — classified the failure.
+            if (run.DiagnosisCode.HasValue && run.DiagnosisCode != DiagnosisCode.Unknown)
+                events.Add(new(run.UpdatedAt, "DiagnosticsAgent",
+                    $"Classified as {run.DiagnosisCode}",
+                    run.PipelineName,
+                    Icons.Material.Filled.Psychology, Color.Primary));
+
+            // NotifierAgent — sent the Teams approval card.
+            if (run.Status == PipelineRunStatus.PendingApproval && run.TeamsMessageId is not null)
+                events.Add(new(run.UpdatedAt, "NotifierAgent",
+                    "Sent approval request to Teams",
+                    run.PipelineName,
+                    Icons.Material.Filled.Notifications, Color.Warning));
+
+            // FixAgent — auto-remediated (no approval required).
+            if (run.Status == PipelineRunStatus.Resolved && string.IsNullOrEmpty(run.ApprovalStatus))
+                events.Add(new(run.UpdatedAt, "FixAgent",
+                    "Auto-remediated (no approval required)",
+                    run.PipelineName,
+                    Icons.Material.Filled.AutoFixHigh, Color.Primary));
+
+            // FixAgent — manually approved and applied.
+            if (run.Status is PipelineRunStatus.Remediating or PipelineRunStatus.Resolved
+                && !string.IsNullOrEmpty(run.ApprovalStatus))
+                events.Add(new(run.UpdatedAt, "FixAgent",
+                    run.Status == PipelineRunStatus.Resolved
+                        ? "Remediation applied successfully"
+                        : "Applying remediation…",
+                    run.PipelineName,
+                    Icons.Material.Filled.BuildCircle, Color.Info));
+        }
+
+        return [.. events.OrderByDescending(e => e.Timestamp).Take(20)];
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // UI helpers — chips, badges, time
+    // ──────────────────────────────────────────────────────────────────────────
+
+    private static (Color color, string label) GetStatusChip(PipelineRunStatus status) => status switch
+    {
+        PipelineRunStatus.Failed          => (Color.Error,     "Failed"),
+        PipelineRunStatus.Remediating     => (Color.Warning,   "Remediating"),   // orange
+        PipelineRunStatus.PendingApproval => (Color.Warning,   "Pending"),       // amber
+        PipelineRunStatus.Resolved        => (Color.Success,   "Resolved"),
+        PipelineRunStatus.Running         => (Color.Secondary, "Running"),       // teal
+        PipelineRunStatus.Succeeded       => (Color.Success,   "Succeeded"),
+        PipelineRunStatus.Cancelled       => (Color.Default,   "Cancelled"),
+        _                                 => (Color.Default,   status.ToString()),
+    };
+
+    private static (Color color, string label) GetRiskBadge(RemediationRisk risk) => risk switch
+    {
+        RemediationRisk.Low    => (Color.Success, "Low"),
+        RemediationRisk.Medium => (Color.Warning, "Medium"),
+        RemediationRisk.High   => (Color.Error,   "High"),
+        _                      => (Color.Default, risk.ToString()),
+    };
+
+    private static string RelativeTime(DateTimeOffset t)
+    {
+        var elapsed = DateTimeOffset.UtcNow - t;
+        return elapsed.TotalSeconds switch
+        {
+            < 60    => $"{(int)elapsed.TotalSeconds}s ago",
+            < 3600  => $"{(int)elapsed.TotalMinutes}m ago",
+            < 86400 => $"{(int)elapsed.TotalHours}h ago",
+            _       => t.ToLocalTime().ToString("MMM d HH:mm"),
+        };
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Stat card helpers
+    // ──────────────────────────────────────────────────────────────────────────
+
+    private static string FormatPercent(int today, int yesterday)
+    {
+        if (yesterday == 0 && today == 0) return "—";
+        if (yesterday == 0)               return "+100%";
+        var pct = (int)Math.Round((today - yesterday) * 100.0 / yesterday);
+        return pct >= 0 ? $"+{pct}%" : $"{pct}%";
+    }
+
+    private static Color PercentColor(int today, int yesterday, bool lowerIsBetter)
+    {
+        if (yesterday == 0 && today == 0) return Color.Secondary;
+        bool improved = lowerIsBetter ? today <= yesterday : today >= yesterday;
+        return improved ? Color.Success : Color.Error;
+    }
+
+    private static string TrendIcon(int today, int yesterday, bool lowerIsBetter)
+    {
+        if (today == yesterday)                              return Icons.Material.Filled.TrendingFlat;
+        bool improved = lowerIsBetter ? today < yesterday : today > yesterday;
+        return improved ? Icons.Material.Filled.TrendingDown : Icons.Material.Filled.TrendingUp;
+    }
+
+    // RenderFragment factory — avoids repeating card markup 4×.
+    // The __builder parameter is provided by the Blazor compiler's Razor processing.
+    private RenderFragment StatCard(
+        string label,
+        int    today,
+        int    yesterday,
+        string icon,
+        string iconColor,
+        bool   lowerIsBetter) => __builder =>
+    {
+        <MudItem xs="12" sm="6" lg="3">
+            <MudPaper Elevation="1" Class="pa-5" Style="height:100%">
+                <MudStack Row="true" AlignItems="AlignItems.FlexStart" Justify="Justify.SpaceBetween">
+
+                    <MudStack Spacing="1" Style="flex:1; min-width:0">
+                        <MudText Typo="Typo.overline" Color="Color.Secondary"
+                                 Style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; line-height:1.4">
+                            @label
+                        </MudText>
+
+                        @if (_loading && today == 0)
+                        {
+                            <MudSkeleton Width="72px" Height="44px" SkeletonType="SkeletonType.Rectangle" />
+                            <MudSkeleton Width="100px" Height="16px" />
+                        }
+                        else
+                        {
+                            <MudText Typo="Typo.h3" Style="font-weight:700; line-height:1.1">
+                                @today
+                            </MudText>
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="0">
+                                <MudIcon Icon="@TrendIcon(today, yesterday, lowerIsBetter)"
+                                         Size="Size.Small"
+                                         Color="@PercentColor(today, yesterday, lowerIsBetter)"
+                                         Style="font-size:0.95rem; margin-right:2px" />
+                                <MudText Typo="Typo.caption"
+                                         Color="@PercentColor(today, yesterday, lowerIsBetter)">
+                                    @FormatPercent(today, yesterday) vs yesterday
+                                </MudText>
+                            </MudStack>
+                        }
+                    </MudStack>
+
+                    <MudIcon Icon="@icon"
+                             Style=@($"color:{iconColor}; opacity:0.18; font-size:3.8rem; margin-left:8px; flex-shrink:0") />
+
+                </MudStack>
+            </MudPaper>
+        </MudItem>
+    };
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Row click / drawer / actions
+    // ──────────────────────────────────────────────────────────────────────────
+
+    private void OnRowClick(DataGridRowClickEventArgs<PipelineRunState> args)
+    {
+        _selectedRun = args.Item;
+        _detailOpen  = true;
+    }
+
+    private void CloseDetail()
+    {
+        _detailOpen  = false;
+        _selectedRun = null;
+    }
+
+    private async Task HandlePanelApproved()
+    {
+        CloseDetail();
+        await LoadAsync();
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Disposal
+    // ──────────────────────────────────────────────────────────────────────────
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_refreshTimer is not null)
+            await _refreshTimer.DisposeAsync();
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Local types
+    // ──────────────────────────────────────────────────────────────────────────
+
+    private sealed record ActivityEvent(
+        DateTimeOffset Timestamp,
+        string         AgentName,
+        string         Description,
+        string         PipelineName,
+        string         Icon,
+        Color          IconColor
+    );
+}

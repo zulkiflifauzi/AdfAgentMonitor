@@ -1,0 +1,267 @@
+@*
+    ApprovalCard — renders a single PendingApproval run as an actionable card.
+
+    Self-contained: injects IMonitorApiClient, IDialogService, ISnackbar.
+    Fires OnApproved / OnRejected with the run so the parent can trigger the
+    fade-out animation and remove the item from its list.
+
+    IsRemoving is set by the parent immediately after a successful action to
+    begin the CSS exit transition before the DOM node is removed.
+*@
+
+@inject IMonitorApiClient ApiClient
+@inject IDialogService    DialogService
+@inject ISnackbar         Snackbar
+
+<div class="approval-card-wrapper @(IsRemoving ? "is-removing" : "")">
+
+    <MudCard Elevation="2" Style="@_cardStyle">
+
+        @* ── Header ─────────────────────────────────────────────────────── *@
+
+        <MudCardHeader Style="padding-bottom:8px">
+            <CardHeaderContent>
+                <MudStack Row="true" AlignItems="AlignItems.FlexStart"
+                          Justify="Justify.SpaceBetween" Class="gap-2 flex-wrap">
+
+                    <MudStack Spacing="0" Style="min-width:0; flex:1; overflow:hidden">
+                        <MudText Typo="Typo.h6"
+                                 Style="font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">
+                            @Run.PipelineName
+                        </MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                            @Run.FactoryName
+                        </MudText>
+                    </MudStack>
+
+                    @if (Run.RemediationRisk.HasValue)
+                    {
+                        @{ var (rc, rl) = RiskChip(Run.RemediationRisk.Value); }
+                        <MudChip T="string" Color="@rc" Size="Size.Small"
+                                 Variant="Variant.Outlined" Style="flex-shrink:0">
+                            @rl
+                        </MudChip>
+                    }
+
+                </MudStack>
+            </CardHeaderContent>
+        </MudCardHeader>
+
+        <MudDivider />
+
+        @* ── Body ────────────────────────────────────────────────────────── *@
+
+        <MudCardContent>
+            <MudStack Spacing="3">
+
+                @* Diagnosis summary *@
+                @if (!string.IsNullOrWhiteSpace(Run.DiagnosisSummary))
+                {
+                    <MudStack Spacing="1">
+                        <MudText Typo="Typo.overline" Color="Color.Secondary">Diagnosis</MudText>
+                        <MudText Typo="Typo.body2" Style="line-height:1.55">
+                            @Run.DiagnosisSummary
+                        </MudText>
+                    </MudStack>
+                }
+
+                @* Proposed remediation plan *@
+                @if (!string.IsNullOrWhiteSpace(Run.RemediationPlan))
+                {
+                    <MudStack Spacing="1">
+                        <MudText Typo="Typo.overline" Color="Color.Secondary">
+                            Proposed Remediation
+                        </MudText>
+                        <MudPaper Elevation="0"
+                                  Style="background:var(--mud-palette-background);
+                                         border:1px solid var(--mud-palette-divider);
+                                         border-radius:6px;
+                                         padding:10px 12px;
+                                         max-height:140px;
+                                         overflow-y:auto">
+                            <MudText Style="font-family:monospace;
+                                           font-size:0.75rem;
+                                           white-space:pre-wrap;
+                                           word-break:break-all;
+                                           line-height:1.55">
+                                @Run.RemediationPlan
+                            </MudText>
+                        </MudPaper>
+                    </MudStack>
+                }
+
+                @* Time since failure *@
+                @if (Run.FailedAt.HasValue)
+                {
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                        <MudIcon Icon="@Icons.Material.Filled.AccessTime"
+                                 Color="Color.Secondary"
+                                 Style="font-size:0.9rem" />
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                            Failed @RelativeTime(Run.FailedAt.Value)
+                        </MudText>
+                    </MudStack>
+                }
+
+            </MudStack>
+        </MudCardContent>
+
+        <MudDivider />
+
+        @* ── Footer ─────────────────────────────────────────────────────── *@
+
+        <MudCardActions Style="padding:10px 12px">
+            @if (_processing)
+            {
+                <MudStack Row="true" AlignItems="AlignItems.Center"
+                          Spacing="2" Class="ml-1">
+                    <MudProgressCircular Indeterminate="true"
+                                         Size="Size.Small"
+                                         Color="Color.Primary" />
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">
+                        Processing…
+                    </MudText>
+                </MudStack>
+            }
+            else
+            {
+                <MudSpacer />
+                <MudButton Variant="Variant.Outlined"
+                           Color="Color.Error"
+                           Size="Size.Small"
+                           StartIcon="@Icons.Material.Filled.Cancel"
+                           OnClick="DoRejectAsync">
+                    Reject
+                </MudButton>
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Success"
+                           Size="Size.Small"
+                           StartIcon="@Icons.Material.Filled.CheckCircle"
+                           Class="ml-2"
+                           OnClick="DoApproveAsync">
+                    Approve
+                </MudButton>
+            }
+        </MudCardActions>
+
+    </MudCard>
+
+</div>
+
+@code {
+
+    // ── Parameters ────────────────────────────────────────────────────────────
+
+    [Parameter, EditorRequired] public PipelineRunState Run       { get; set; } = default!;
+
+    /// <summary>
+    /// Set to <c>true</c> by the parent immediately after a successful action
+    /// to trigger the CSS exit transition before the card is unmounted.
+    /// </summary>
+    [Parameter] public bool IsRemoving { get; set; }
+
+    [Parameter] public EventCallback<PipelineRunState> OnApproved { get; set; }
+    [Parameter] public EventCallback<PipelineRunState> OnRejected { get; set; }
+
+    // ── Private state ─────────────────────────────────────────────────────────
+
+    private bool _processing;
+
+    // ── Card style — left border color signals risk level ─────────────────────
+
+    private string _cardStyle =>
+        $"border-left:4px solid {BorderColor}; border-radius:8px; overflow:hidden";
+
+    private string BorderColor => Run.RemediationRisk switch
+    {
+        RemediationRisk.High   => "var(--mud-palette-error)",
+        RemediationRisk.Medium => "var(--mud-palette-warning)",
+        RemediationRisk.Low    => "var(--mud-palette-success)",
+        _                      => "var(--mud-palette-divider)",
+    };
+
+    // ── Actions ───────────────────────────────────────────────────────────────
+
+    private async Task DoApproveAsync()
+    {
+        _processing = true;
+        try
+        {
+            await ApiClient.ApproveAsync(Run.Id);
+            Snackbar.Add(
+                $"Approved — fix agent queued for \"{Run.PipelineName}\".",
+                Severity.Success);
+            await OnApproved.InvokeAsync(Run);
+        }
+        catch (ApiException ex)
+        {
+            Snackbar.Add($"Approve failed ({ex.StatusCode}): {ex.Message}", Severity.Error);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Approve failed: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _processing = false;
+        }
+    }
+
+    private async Task DoRejectAsync()
+    {
+        var parameters = new DialogParameters<RejectReasonDialog>
+        {
+            { x => x.PipelineName, Run.PipelineName },
+        };
+
+        var dialog = await DialogService.ShowAsync<RejectReasonDialog>(
+            "Reject Run", parameters);
+        var result = await dialog.Result;
+
+        if (result is null || result.Canceled) return;
+
+        var reason = result.Data as string ?? string.Empty;
+
+        _processing = true;
+        try
+        {
+            await ApiClient.RejectAsync(Run.Id, reason);
+            Snackbar.Add($"Rejected \"{Run.PipelineName}\".", Severity.Info);
+            await OnRejected.InvokeAsync(Run);
+        }
+        catch (ApiException ex)
+        {
+            Snackbar.Add($"Reject failed ({ex.StatusCode}): {ex.Message}", Severity.Error);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Reject failed: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _processing = false;
+        }
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private static (Color color, string label) RiskChip(RemediationRisk r) => r switch
+    {
+        RemediationRisk.High   => (Color.Error,   "High Risk"),
+        RemediationRisk.Medium => (Color.Warning, "Medium Risk"),
+        RemediationRisk.Low    => (Color.Success, "Low Risk"),
+        _                      => (Color.Default, r.ToString()),
+    };
+
+    private static string RelativeTime(DateTimeOffset t)
+    {
+        var elapsed = DateTimeOffset.UtcNow - t;
+        return elapsed.TotalSeconds switch
+        {
+            < 60    => "just now",
+            < 3600  => $"{(int)elapsed.TotalMinutes}m ago",
+            < 86400 => $"{(int)elapsed.TotalHours}h ago",
+            _       => t.ToLocalTime().ToString("MMM d · HH:mm"),
+        };
+    }
+}

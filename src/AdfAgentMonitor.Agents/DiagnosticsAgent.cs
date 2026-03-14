@@ -19,6 +19,7 @@ public class DiagnosticsAgent(
     IAdfService adfService,
     IPipelineRunStateRepository repository,
     IChatCompletionService chatService,
+    IAgentActivityLogRepository activityLog,
     ILogger<DiagnosticsAgent> logger) : IAgent
 {
     // Prompt is loaded once per process; PromptLoader throws at startup if the
@@ -143,6 +144,25 @@ public class DiagnosticsAgent(
         logger.LogInformation(
             "DiagnosticsAgent completed for runId={RunId}. Code={Code} Risk={Risk} Summary={Summary}",
             state.PipelineRunId, diagCode, risk, parsed.Summary);
+
+        try
+        {
+            await activityLog.AddAsync(new AgentActivityLog
+            {
+                Id            = Guid.NewGuid(),
+                AgentName     = "DiagnosticsAgent",
+                PipelineRunId = state.Id,
+                PipelineName  = state.PipelineName,
+                Action        = "Diagnosed pipeline failure",
+                ResultMessage = $"Code={diagCode} Risk={risk}. {parsed.Summary}",
+                Success       = true,
+                Timestamp     = DateTimeOffset.UtcNow,
+            }, ct);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "DiagnosticsAgent failed to write activity log for runId={RunId}.", state.PipelineRunId);
+        }
 
         return new AgentResult(
             Success: true,

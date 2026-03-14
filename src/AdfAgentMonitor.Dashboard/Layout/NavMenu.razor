@@ -1,0 +1,45 @@
+<MudNavMenu Class="pt-2 pb-4">
+
+    <MudNavLink Href=""
+                Match="NavLinkMatch.All"
+                Icon="@Icons.Material.Filled.Dashboard">
+        Dashboard
+    </MudNavLink>
+
+    <MudNavLink Href="runs"
+                Icon="@Icons.Material.Filled.AccountTree">
+        Pipeline Runs
+    </MudNavLink>
+
+    @* Pending Approvals — badge shows count when > 0 *@
+    <MudBadge Content="@PendingCount"
+              Visible="@(PendingCount > 0)"
+              Color="Color.Warning"
+              Overlap="true"
+              Bordered="true"
+              Class="d-block">
+        <MudNavLink Href="approvals"
+                    Icon="@Icons.Material.Filled.Approval">
+            Pending Approvals
+        </MudNavLink>
+    </MudBadge>
+
+    <MudNavLink Href="activity"
+                Icon="@Icons.Material.Filled.SmartToy">
+        Agent Activity
+    </MudNavLink>
+
+    <MudDivider Class="my-3" />
+
+    <MudNavLink Href="settings"
+                Icon="@Icons.Material.Filled.Settings">
+        Settings
+    </MudNavLink>
+
+</MudNavMenu>
+
+@code {
+    /// <summary>Injected by MainLayout via its PeriodicTimer refresh loop.</summary>
+    [Parameter, EditorRequired]
+    public int PendingCount { get; set; }
+}

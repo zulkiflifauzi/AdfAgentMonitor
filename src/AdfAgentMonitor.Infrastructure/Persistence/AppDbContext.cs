@@ -6,10 +6,52 @@ namespace AdfAgentMonitor.Infrastructure.Persistence;
 
 public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
 {
-    public DbSet<PipelineRunState> PipelineRunStates => Set<PipelineRunState>();
+    public DbSet<PipelineRunState> PipelineRunStates   => Set<PipelineRunState>();
+    public DbSet<AgentActivityLog> AgentActivityLogs   => Set<AgentActivityLog>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<AgentActivityLog>(entity =>
+        {
+            entity.ToTable("AgentActivityLogs");
+
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.Id)
+                  .ValueGeneratedNever();
+
+            entity.Property(e => e.AgentName)
+                  .IsRequired()
+                  .HasMaxLength(128);
+
+            entity.Property(e => e.PipelineRunId)
+                  .IsRequired(false);
+
+            entity.Property(e => e.PipelineName)
+                  .IsRequired()
+                  .HasMaxLength(256);
+
+            entity.Property(e => e.Action)
+                  .IsRequired()
+                  .HasMaxLength(512);
+
+            entity.Property(e => e.ResultMessage)
+                  .IsRequired(false)
+                  .HasMaxLength(4000);
+
+            entity.Property(e => e.Timestamp)
+                  .IsRequired();
+
+            entity.HasIndex(e => e.Timestamp)
+                  .HasDatabaseName("IX_AgentActivityLogs_Timestamp");
+
+            entity.HasIndex(e => new { e.AgentName, e.Timestamp })
+                  .HasDatabaseName("IX_AgentActivityLogs_AgentName_Timestamp");
+
+            entity.HasIndex(e => e.PipelineRunId)
+                  .HasDatabaseName("IX_AgentActivityLogs_PipelineRunId");
+        });
+
         modelBuilder.Entity<PipelineRunState>(entity =>
         {
             entity.ToTable("PipelineRunStates");

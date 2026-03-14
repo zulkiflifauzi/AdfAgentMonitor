@@ -1,0 +1,653 @@
+@page "/runs"
+@inject IMonitorApiClient ApiClient
+@inject IDialogService    DialogService
+@inject ISnackbar         Snackbar
+@inject LayoutState       LayoutState
+@implements IAsyncDisposable
+
+<PageTitle>Pipeline Runs — ADF Agent Monitor</PageTitle>
+
+@* ── Page-level error ────────────────────────────────────────────────────── *@
+
+@if (_errorMessage is not null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-4" ShowCloseIcon="true"
+              CloseIconClicked="@(() => _errorMessage = null)">
+        @_errorMessage
+    </MudAlert>
+}
+
+<MudStack Spacing="4">
+
+    @* ── Header ─────────────────────────────────────────────────────────── *@
+
+    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+        <div>
+            <MudText Typo="Typo.h4" Style="font-weight:700">Pipeline Runs</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                @_runs.Count run@(_runs.Count == 1 ? "" : "s") · filters applied server-side
+            </MudText>
+        </div>
+        <MudTooltip Text="Refresh">
+            <MudIconButton Icon="@Icons.Material.Filled.Refresh"
+                           Disabled="@_loading"
+                           OnClick="@LoadAsync" />
+        </MudTooltip>
+    </MudStack>
+
+    @* ── Filter toolbar ──────────────────────────────────────────────────── *@
+
+    <MudPaper Elevation="1" Class="pa-4">
+        <MudGrid Spacing="2">
+
+            <MudItem xs="12" sm="6" md="3">
+                <MudSelect T="PipelineRunStatus?"
+                           Value="_statusFilter"
+                           ValueChanged="@OnStatusChanged"
+                           Label="Status"
+                           Clearable="true"
+                           Dense="true"
+                           Variant="Variant.Outlined"
+                           AdornmentIcon="@Icons.Material.Filled.FilterList">
+                    <MudSelectItem T="PipelineRunStatus?" Value="@((PipelineRunStatus?)null)">All statuses</MudSelectItem>
+                    <MudSelectItem T="PipelineRunStatus?" Value="@((PipelineRunStatus?)PipelineRunStatus.Failed)">Failed</MudSelectItem>
+                    <MudSelectItem T="PipelineRunStatus?" Value="@((PipelineRunStatus?)PipelineRunStatus.Remediating)">Remediating</MudSelectItem>
+                    <MudSelectItem T="PipelineRunStatus?" Value="@((PipelineRunStatus?)PipelineRunStatus.PendingApproval)">Pending Approval</MudSelectItem>
+                    <MudSelectItem T="PipelineRunStatus?" Value="@((PipelineRunStatus?)PipelineRunStatus.Resolved)">Resolved</MudSelectItem>
+                    <MudSelectItem T="PipelineRunStatus?" Value="@((PipelineRunStatus?)PipelineRunStatus.Running)">Running</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+
+            <MudItem xs="12" sm="6" md="3">
+                <MudSelect T="RemediationRisk?"
+                           Value="_riskFilter"
+                           ValueChanged="@OnRiskChanged"
+                           Label="Risk"
+                           Clearable="true"
+                           Dense="true"
+                           Variant="Variant.Outlined"
+                           AdornmentIcon="@Icons.Material.Filled.Warning">
+                    <MudSelectItem T="RemediationRisk?" Value="@((RemediationRisk?)null)">All risks</MudSelectItem>
+                    <MudSelectItem T="RemediationRisk?" Value="@((RemediationRisk?)RemediationRisk.Low)">Low</MudSelectItem>
+                    <MudSelectItem T="RemediationRisk?" Value="@((RemediationRisk?)RemediationRisk.Medium)">Medium</MudSelectItem>
+                    <MudSelectItem T="RemediationRisk?" Value="@((RemediationRisk?)RemediationRisk.High)">High</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+
+            <MudItem xs="12" sm="6" md="3">
+                <MudTextField @bind-Value="_nameSearch"
+                              Label="Pipeline name"
+                              Variant="Variant.Outlined"
+                              Dense="true"
+                              Adornment="Adornment.Start"
+                              AdornmentIcon="@Icons.Material.Filled.Search"
+                              Clearable="true"
+                              DebounceInterval="400"
+                              OnDebounceIntervalElapsed="@LoadAsync"
+                              OnClearButtonClick="@OnSearchCleared" />
+            </MudItem>
+
+            <MudItem xs="12" sm="6" md="3">
+                <MudDateRangePicker DateRange="_dateRange"
+                                    DateRangeChanged="@OnDateRangeChanged"
+                                    Label="Date range"
+                                    Variant="Variant.Outlined"
+                                    Dense="true"
+                                    Clearable="true"
+                                    AutoClose="true" />
+            </MudItem>
+
+        </MudGrid>
+
+        @if (!_filter.IsEmpty)
+        {
+            <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.FlexEnd" Class="mt-2">
+                <MudButton Variant="Variant.Text"
+                           Color="Color.Secondary"
+                           Size="Size.Small"
+                           StartIcon="@Icons.Material.Filled.FilterAltOff"
+                           OnClick="@ClearFilters">
+                    Clear all filters
+                </MudButton>
+            </MudStack>
+        }
+    </MudPaper>
+
+    @* ── Active filter chips ─────────────────────────────────────────────── *@
+
+    @if (!_filter.IsEmpty)
+    {
+        <MudStack Row="true" Spacing="1" Style="flex-wrap:wrap">
+            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mr-1 mt-1">
+                Active filters:
+            </MudText>
+            @if (_filter.Status.HasValue)
+            {
+                <MudChip T="string" Size="Size.Small" Color="Color.Default"
+                         OnClose="@(() => OnStatusChanged(null))">
+                    Status: @_filter.Status.Value
+                </MudChip>
+            }
+            @if (_filter.Risk.HasValue)
+            {
+                <MudChip T="string" Size="Size.Small" Color="Color.Default"
+                         OnClose="@(() => OnRiskChanged(null))">
+                    Risk: @_filter.Risk.Value
+                </MudChip>
+            }
+            @if (!string.IsNullOrEmpty(_filter.PipelineName))
+            {
+                <MudChip T="string" Size="Size.Small" Color="Color.Default"
+                         OnClose="@OnSearchCleared">
+                    Name: @_filter.PipelineName
+                </MudChip>
+            }
+            @if (_filter.DateFrom.HasValue || _filter.DateTo.HasValue)
+            {
+                <MudChip T="string" Size="Size.Small" Color="Color.Default"
+                         OnClose="@(() => OnDateRangeChanged(new DateRange(null, null)))">
+                    @(_filter.DateFrom?.ToString("MMM d") ?? "…") → @(_filter.DateTo?.ToString("MMM d") ?? "…")
+                </MudChip>
+            }
+        </MudStack>
+    }
+
+    @* ── Data grid ───────────────────────────────────────────────────────── *@
+
+    <MudPaper Elevation="1" Class="pa-0">
+
+        <MudDataGrid T="PipelineRunState"
+                     Items="@_runs"
+                     RowClick="@OnRowClick"
+                     RowClass="cursor-pointer"
+                     Hover="true"
+                     Dense="false"
+                     FixedHeader="true"
+                     Height="600px"
+                     Loading="@_loading"
+                     SortMode="SortMode.Multiple"
+                     Elevation="0">
+
+            <Columns>
+
+                @* Expand button — disabled when there is nothing to expand *@
+                <HierarchyColumn T="PipelineRunState"
+                                 ButtonDisabledFunc="@(r =>
+                                     string.IsNullOrWhiteSpace(r.DiagnosisSummary) &&
+                                     string.IsNullOrWhiteSpace(r.RemediationPlan))" />
+
+                <TemplateColumn Title="Pipeline" SortBy="@(x => x.PipelineName)">
+                    <CellTemplate>
+                        <MudStack Spacing="0">
+                            <MudText Typo="Typo.body2" Style="font-weight:500">
+                                @context.Item.PipelineName
+                            </MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                @context.Item.FactoryName
+                            </MudText>
+                        </MudStack>
+                    </CellTemplate>
+                </TemplateColumn>
+
+                <TemplateColumn Title="Status" SortBy="@(x => x.Status)">
+                    <CellTemplate>
+                        @{ var (sc, sl) = StatusChip(context.Item.Status); }
+                        <MudChip T="string" Color="@sc" Size="Size.Small" Variant="Variant.Filled">
+                            @sl
+                        </MudChip>
+                    </CellTemplate>
+                </TemplateColumn>
+
+                <TemplateColumn Title="Diagnosis" SortBy="@(x => x.DiagnosisCode)">
+                    <CellTemplate>
+                        <MudText Typo="Typo.body2">
+                            @(context.Item.DiagnosisCode?.ToString() ?? "—")
+                        </MudText>
+                    </CellTemplate>
+                </TemplateColumn>
+
+                <TemplateColumn Title="Risk" SortBy="@(x => x.RemediationRisk)">
+                    <CellTemplate>
+                        @if (context.Item.RemediationRisk.HasValue)
+                        {
+                            var (rc, rl) = RiskBadge(context.Item.RemediationRisk.Value);
+                            <MudChip T="string" Color="@rc" Size="Size.Small" Variant="Variant.Outlined">
+                                @rl
+                            </MudChip>
+                        }
+                        else
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">—</MudText>
+                        }
+                    </CellTemplate>
+                </TemplateColumn>
+
+                <TemplateColumn Title="Failed At" SortBy="@(x => x.FailedAt)">
+                    <CellTemplate>
+                        @if (context.Item.FailedAt.HasValue)
+                        {
+                            <MudTooltip Text="@context.Item.FailedAt.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")">
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                    @RelativeTime(context.Item.FailedAt.Value)
+                                </MudText>
+                            </MudTooltip>
+                        }
+                        else
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">—</MudText>
+                        }
+                    </CellTemplate>
+                </TemplateColumn>
+
+                <TemplateColumn Title="Resolved At" SortBy="@(x => x.ResolvedAt)">
+                    <CellTemplate>
+                        @if (context.Item.ResolvedAt.HasValue)
+                        {
+                            <MudTooltip Text="@context.Item.ResolvedAt.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")">
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                    @RelativeTime(context.Item.ResolvedAt.Value)
+                                </MudText>
+                            </MudTooltip>
+                        }
+                        else
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">—</MudText>
+                        }
+                    </CellTemplate>
+                </TemplateColumn>
+
+                @* Actions column — stop propagation so row click (drawer) doesn't fire *@
+                <TemplateColumn Title="Actions" Sortable="false">
+                    <CellTemplate>
+                        <MudStack Row="true" Spacing="0" AlignItems="AlignItems.Center">
+
+                            @* View button — always visible *@
+                            <span @onclick:stopPropagation="true">
+                                <MudTooltip Text="View details">
+                                    <MudIconButton Icon="@Icons.Material.Filled.OpenInNew"
+                                                   Size="Size.Small"
+                                                   Color="Color.Default"
+                                                   OnClick="@(() => OpenDrawer(context.Item))" />
+                                </MudTooltip>
+                            </span>
+
+                            @* Approve / Reject — only for PendingApproval *@
+                            @if (context.Item.Status == PipelineRunStatus.PendingApproval)
+                            {
+                                @if (_processingIds.Contains(context.Item.Id))
+                                {
+                                    <MudProgressCircular Size="Size.Small" Indeterminate="true"
+                                                         Class="mx-2" Color="Color.Primary" />
+                                }
+                                else
+                                {
+                                    <span @onclick:stopPropagation="true">
+                                        <MudTooltip Text="Approve remediation">
+                                            <MudIconButton Icon="@Icons.Material.Filled.CheckCircle"
+                                                           Size="Size.Small"
+                                                           Color="Color.Success"
+                                                           OnClick="@(() => OpenApproveConfirmAsync(context.Item))" />
+                                        </MudTooltip>
+                                    </span>
+                                    <span @onclick:stopPropagation="true">
+                                        <MudTooltip Text="Reject">
+                                            <MudIconButton Icon="@Icons.Material.Filled.Cancel"
+                                                           Size="Size.Small"
+                                                           Color="Color.Error"
+                                                           OnClick="@(() => OpenRejectDialogAsync(context.Item))" />
+                                        </MudTooltip>
+                                    </span>
+                                }
+                            }
+
+                        </MudStack>
+                    </CellTemplate>
+                </TemplateColumn>
+
+            </Columns>
+
+            @* ── Row expansion ── *@
+            <ChildRowContent Context="run">
+                <td colspan="100" style="padding:0">
+                    <div style="background:var(--mud-palette-background-gray); border-top:1px solid var(--mud-palette-divider)">
+                        <MudExpansionPanels Elevation="0" Class="ma-0" Style="background:transparent">
+
+                            @if (!string.IsNullOrWhiteSpace(run.DiagnosisSummary))
+                            {
+                                <MudExpansionPanel Text="Diagnosis Summary"
+                                                   IsInitiallyExpanded="true"
+                                                   Dense="true">
+                                    <MudText Typo="Typo.body2" Class="py-1">
+                                        @run.DiagnosisSummary
+                                    </MudText>
+                                </MudExpansionPanel>
+                            }
+
+                            @if (!string.IsNullOrWhiteSpace(run.RemediationPlan))
+                            {
+                                <MudExpansionPanel Text="Remediation Plan" Dense="true">
+                                    <MudText Typo="Typo.caption"
+                                             Style="font-family:monospace; white-space:pre-wrap; word-break:break-all; font-size:0.7rem"
+                                             Class="py-1">
+                                        @run.RemediationPlan
+                                    </MudText>
+                                </MudExpansionPanel>
+                            }
+
+                        </MudExpansionPanels>
+                    </div>
+                </td>
+            </ChildRowContent>
+
+            <NoRecordsContent>
+                <MudStack AlignItems="AlignItems.Center" Class="pa-10">
+                    <MudIcon Icon="@Icons.Material.Filled.SearchOff"
+                             Color="Color.Secondary"
+                             Style="font-size:3rem; opacity:0.4" />
+                    <MudText Typo="Typo.body1">No runs match the current filters</MudText>
+                    @if (!_filter.IsEmpty)
+                    {
+                        <MudButton Variant="Variant.Text" Color="Color.Primary" OnClick="@ClearFilters">
+                            Clear filters
+                        </MudButton>
+                    }
+                </MudStack>
+            </NoRecordsContent>
+
+        </MudDataGrid>
+    </MudPaper>
+
+</MudStack>
+
+@* ── Detail drawer ───────────────────────────────────────────────────────── *@
+
+<MudDrawer @bind-Open="_drawerOpen"
+           Anchor="Anchor.End"
+           Variant="DrawerVariant.Temporary"
+           Width="480px"
+           Elevation="4"
+           Fixed="true"
+           Class="drawer-panel">
+    @if (_drawerRun is not null)
+    {
+        <PipelineRunDetailPanel Run="@_drawerRun"
+                                OnClose="@CloseDrawer"
+                                OnApproved="@HandlePanelApproved"
+                                OnRejected="@HandlePanelApproved" />
+    }
+</MudDrawer>
+
+@code {
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // State
+    // ──────────────────────────────────────────────────────────────────────────
+
+    private List<PipelineRunState> _runs          = [];
+    private bool                   _loading       = true;
+    private string?                _errorMessage;
+
+    // Filter state — kept flat so the chips can dismiss individual filters.
+    private PipelineRunStatus? _statusFilter;
+    private RemediationRisk?   _riskFilter;
+    private string             _nameSearch  = string.Empty;
+    private DateRange?         _dateRange;
+
+    // Computed filter — rebuilt before each load.
+    private RunFilter _filter = new();
+
+    // Drawer state.
+    private bool             _drawerOpen;
+    private PipelineRunState? _drawerRun;
+
+    // Per-row processing indicator for approve / reject actions.
+    private HashSet<Guid> _processingIds = [];
+
+    // CTS for in-flight load; replaced on every filter change so stale responses are discarded.
+    private CancellationTokenSource _loadCts = new();
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Lifecycle
+    // ──────────────────────────────────────────────────────────────────────────
+
+    protected override async Task OnInitializedAsync()
+        => await LoadAsync();
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Data loading
+    // ──────────────────────────────────────────────────────────────────────────
+
+    private async Task LoadAsync()
+    {
+        // Cancel any outstanding request so we never apply a slow earlier response.
+        await _loadCts.CancelAsync();
+        _loadCts = new CancellationTokenSource();
+        var ct = _loadCts.Token;
+
+        _loading = true;
+        StateHasChanged();
+
+        try
+        {
+            _filter = BuildFilter();
+            _runs   = await ApiClient.GetFilteredRunsAsync(_filter, ct);
+            _errorMessage = null;
+            LayoutState.SetApiConnected(true);
+        }
+        catch (OperationCanceledException)
+        {
+            return; // superseded by a newer request — do not update state
+        }
+        catch (ApiException ex)
+        {
+            _errorMessage = $"API error {ex.StatusCode}: {ex.Message}";
+            LayoutState.SetApiConnected(false);
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Could not reach the API: {ex.Message}";
+            LayoutState.SetApiConnected(false);
+        }
+        finally
+        {
+            if (!ct.IsCancellationRequested)
+            {
+                _loading = false;
+                StateHasChanged();
+            }
+        }
+    }
+
+    private RunFilter BuildFilter() => new()
+    {
+        Status       = _statusFilter,
+        Risk         = _riskFilter,
+        PipelineName = string.IsNullOrWhiteSpace(_nameSearch) ? null : _nameSearch.Trim(),
+        DateFrom     = _dateRange?.Start  is DateTime from ? new DateTimeOffset(from,  TimeSpan.Zero) : null,
+        // Include the full end day by advancing to the final tick of that date.
+        DateTo       = _dateRange?.End    is DateTime to   ? new DateTimeOffset(to,    TimeSpan.Zero).AddDays(1).AddTicks(-1) : null,
+    };
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Filter event handlers
+    // ──────────────────────────────────────────────────────────────────────────
+
+    private async Task OnStatusChanged(PipelineRunStatus? v) { _statusFilter = v; await LoadAsync(); }
+    private async Task OnRiskChanged(RemediationRisk? v)     { _riskFilter   = v; await LoadAsync(); }
+
+    private async Task OnSearchCleared()
+    {
+        _nameSearch = string.Empty;
+        await LoadAsync();
+    }
+
+    private async Task OnDateRangeChanged(DateRange range)
+    {
+        _dateRange = (range.Start is null && range.End is null) ? null : range;
+        await LoadAsync();
+    }
+
+    private async Task ClearFilters()
+    {
+        _statusFilter = null;
+        _riskFilter   = null;
+        _nameSearch   = string.Empty;
+        _dateRange    = null;
+        await LoadAsync();
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Row click / drawer
+    // ──────────────────────────────────────────────────────────────────────────
+
+    private void OnRowClick(DataGridRowClickEventArgs<PipelineRunState> args)
+        => OpenDrawer(args.Item);
+
+    private void OpenDrawer(PipelineRunState run)
+    {
+        _drawerRun  = run;
+        _drawerOpen = true;
+    }
+
+    private void CloseDrawer()
+    {
+        _drawerOpen = false;
+        _drawerRun  = null;
+    }
+
+    // Fired by the panel after it completes an approve or reject action internally.
+    private async Task HandlePanelApproved()
+    {
+        CloseDrawer();
+        await LoadAsync();
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Approve / reject actions
+    // ──────────────────────────────────────────────────────────────────────────
+
+    private async Task OpenApproveConfirmAsync(PipelineRunState run)
+    {
+        var confirmed = await DialogService.ShowMessageBox(
+            title:      "Confirm approval",
+            message:    $"Approve remediation for \"{run.PipelineName}\"?",
+            yesText:    "Approve",
+            cancelText: "Cancel");
+
+        if (confirmed == true)
+            await ExecuteApproveAsync(run);
+    }
+
+    private async Task OpenRejectDialogAsync(PipelineRunState run)
+    {
+        var parameters = new DialogParameters<RejectReasonDialog>
+        {
+            { x => x.PipelineName, run.PipelineName },
+        };
+
+        var dialog = await DialogService.ShowAsync<RejectReasonDialog>("Reject run", parameters);
+        var result = await dialog.Result;
+
+        if (!result.Canceled && result.Data is string reason)
+            await ExecuteRejectAsync(run, reason);
+    }
+
+    private async Task ExecuteApproveAsync(PipelineRunState run)
+    {
+        _processingIds.Add(run.Id);
+        // Close drawer if it's showing this run — state will change.
+        if (_drawerRun?.Id == run.Id) CloseDrawer();
+
+        try
+        {
+            await ApiClient.ApproveAsync(run.Id);
+            Snackbar.Add($"Approved \"{run.PipelineName}\" — remediation queued.", Severity.Success);
+            await LoadAsync();
+        }
+        catch (ApiException ex)
+        {
+            Snackbar.Add($"Approval failed ({ex.StatusCode}): {ex.Message}", Severity.Error);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Approval failed: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _processingIds.Remove(run.Id);
+            StateHasChanged();
+        }
+    }
+
+    private async Task ExecuteRejectAsync(PipelineRunState run, string reason)
+    {
+        _processingIds.Add(run.Id);
+        if (_drawerRun?.Id == run.Id) CloseDrawer();
+
+        try
+        {
+            await ApiClient.RejectAsync(run.Id, reason);
+            Snackbar.Add($"Rejected \"{run.PipelineName}\".", Severity.Info);
+            await LoadAsync();
+        }
+        catch (ApiException ex)
+        {
+            Snackbar.Add($"Rejection failed ({ex.StatusCode}): {ex.Message}", Severity.Error);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Rejection failed: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _processingIds.Remove(run.Id);
+            StateHasChanged();
+        }
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // UI helpers
+    // ──────────────────────────────────────────────────────────────────────────
+
+    private static (Color color, string label) StatusChip(PipelineRunStatus s) => s switch
+    {
+        PipelineRunStatus.Failed          => (Color.Error,     "Failed"),
+        PipelineRunStatus.Remediating     => (Color.Warning,   "Remediating"),
+        PipelineRunStatus.PendingApproval => (Color.Warning,   "Pending Approval"),
+        PipelineRunStatus.Resolved        => (Color.Success,   "Resolved"),
+        PipelineRunStatus.Running         => (Color.Secondary, "Running"),
+        PipelineRunStatus.Succeeded       => (Color.Success,   "Succeeded"),
+        PipelineRunStatus.Cancelled       => (Color.Default,   "Cancelled"),
+        _                                 => (Color.Default,   s.ToString()),
+    };
+
+    private static (Color color, string label) RiskBadge(RemediationRisk r) => r switch
+    {
+        RemediationRisk.Low    => (Color.Success, "Low"),
+        RemediationRisk.Medium => (Color.Warning, "Medium"),
+        RemediationRisk.High   => (Color.Error,   "High"),
+        _                      => (Color.Default, r.ToString()),
+    };
+
+    private static string RelativeTime(DateTimeOffset t)
+    {
+        var elapsed = DateTimeOffset.UtcNow - t;
+        return elapsed.TotalSeconds switch
+        {
+            < 60    => $"{(int)elapsed.TotalSeconds}s ago",
+            < 3600  => $"{(int)elapsed.TotalMinutes}m ago",
+            < 86400 => $"{(int)elapsed.TotalHours}h ago",
+            _       => t.ToLocalTime().ToString("MMM d HH:mm"),
+        };
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Disposal — cancel any in-flight load
+    // ──────────────────────────────────────────────────────────────────────────
+
+    public async ValueTask DisposeAsync()
+    {
+        await _loadCts.CancelAsync();
+        _loadCts.Dispose();
+    }
+}

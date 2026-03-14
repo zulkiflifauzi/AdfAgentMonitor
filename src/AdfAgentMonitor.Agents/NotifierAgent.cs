@@ -22,6 +22,7 @@ namespace AdfAgentMonitor.Agents;
 public class NotifierAgent(
     ITeamsNotifierService notifierService,
     IPipelineRunStateRepository repository,
+    IAgentActivityLogRepository activityLog,
     ILogger<NotifierAgent> logger) : IAgent
 {
     // ---------------------------------------------------------------------------
@@ -56,6 +57,25 @@ public class NotifierAgent(
         logger.LogInformation(
             "NotifierAgent stored TeamsMessageId={MessageId} for runId={RunId}.",
             messageId, state.PipelineRunId);
+
+        try
+        {
+            await activityLog.AddAsync(new AgentActivityLog
+            {
+                Id            = Guid.NewGuid(),
+                AgentName     = "NotifierAgent",
+                PipelineRunId = state.Id,
+                PipelineName  = state.PipelineName,
+                Action        = "Posted Teams notification",
+                ResultMessage = $"Teams card posted (messageId={messageId}).",
+                Success       = true,
+                Timestamp     = DateTimeOffset.UtcNow,
+            }, ct);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "NotifierAgent failed to write activity log for runId={RunId}.", state.PipelineRunId);
+        }
 
         return new AgentResult(
             Success:    true,

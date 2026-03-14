@@ -1,0 +1,143 @@
+html, body {
+    font-family: 'Roboto', sans-serif;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+}
+
+#app, .mud-layout {
+    height: 100%;
+}
+
+.loading-progress {
+    position: relative;
+    display: block;
+    fill: none;
+    stroke: #e0e0e0;
+    stroke-width: 0.6rem;
+    transform-origin: 50% 50%;
+    transform: rotate(-90deg);
+    width: 8rem;
+    height: 8rem;
+    margin: 20vh auto 1rem;
+}
+
+.loading-progress circle:last-child {
+    stroke: #594ae2;
+    stroke-dasharray: 251.2;
+    animation: loading-progress 3s linear infinite;
+}
+
+@keyframes loading-progress {
+    0% { stroke-dashoffset: 251.2; }
+    100% { stroke-dashoffset: 0; }
+}
+
+.loading-progress-text {
+    text-align: center;
+    font-weight: bold;
+    margin-top: 1rem;
+}
+
+.loading-progress-text:after {
+    content: attr(data-blazor-load-percentage-text) "Loading\2026";
+}
+
+#blazor-error-ui {
+    background: lightyellow;
+    bottom: 0;
+    box-shadow: 0 -1px 2px rgba(0, 0, 0, 0.2);
+    display: none;
+    left: 0;
+    padding: 0.6rem 1.25rem 0.7rem 1.25rem;
+    position: fixed;
+    width: 100%;
+    z-index: 1000;
+}
+
+/* Utility — used by MudDataGrid row click targets */
+.cursor-pointer { cursor: pointer; }
+
+/* ── Detail-panel drawer ─────────────────────────────────────────────────────
+   Ensures the drawer's content area fills viewport height as a flex column,
+   enabling the sticky footer (approve/reject) to stay pinned at the bottom
+   while only the tab panels scroll.
+   Applied to any MudDrawer with Class="drawer-panel". */
+
+.drawer-panel > .mud-drawer-content {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+/* Host div that wraps MudTabs — fills remaining height after the header */
+.panel-tabs-host {
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+/* MudTabs panels container — fills the available height */
+.panel-tabs-host .mud-tabs-panels {
+    flex: 1;
+    overflow: hidden;
+    min-height: 0;
+}
+
+/* Each individual tab panel — scrollable */
+.panel-tabs-host .panel-tab-scroll {
+    height: 100%;
+    overflow-y: auto;
+}
+
+/* ── Approval card enter / exit animation ────────────────────────────────────
+   Each ApprovalCard is wrapped in .approval-card-wrapper.
+   Adding .is-removing triggers the CSS exit transition (fade + lift + shrink).
+   The parent waits 380ms after setting IsRemoving before removing the item
+   from the list, so the transition completes before the DOM node is removed. */
+
+.approval-card-wrapper {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    transition: opacity 0.35s ease, transform 0.35s ease;
+    will-change: opacity, transform;
+}
+
+.approval-card-wrapper.is-removing {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.97);
+    pointer-events: none;
+}
+
+/* ── Agent Activity — new-entry slide-down animation ───────────────────────
+   .activity-entry--new is applied immediately when a live-poll prepends a new
+   entry. The class is removed after 600 ms so the animation plays once. */
+
+@keyframes activity-slide-down {
+    from {
+        opacity: 0;
+        transform: translateY(-16px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.activity-entry {
+    animation: none;
+}
+
+.activity-entry--new {
+    animation: activity-slide-down 0.4s ease forwards;
+}
+
+#blazor-error-ui .dismiss {
+    cursor: pointer;
+    position: absolute;
+    right: 0.75rem;
+    top: 0.5rem;
+}

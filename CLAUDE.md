@@ -77,7 +77,8 @@ AdfAgentMonitor.sln
     ├── AdfAgentMonitor.Agents          # Agent implementations (Semantic Kernel)
     ├── AdfAgentMonitor.Infrastructure  # EF Core, ADF SDK, Graph API, Hangfire storage
     ├── AdfAgentMonitor.Worker          # Hangfire host + job registrations only
-    └── AdfAgentMonitor.Api             # Webhook receiver + dashboard read endpoints
+    ├── AdfAgentMonitor.Api             # Webhook receiver + dashboard read endpoints
+    └── AdfAgentMonitor.Dashboard       # Blazor WebAssembly PWA — monitoring UI + approval interface
 ```
 
 ### Dependency Graph
@@ -85,11 +86,13 @@ AdfAgentMonitor.sln
 ```
 Core   ◄── Agents
 Core   ◄── Infrastructure
-Core   ◄── Worker   ──► Agents, Infrastructure
-Core   ◄── Api      ──► Agents, Infrastructure
+Core   ◄── Worker     ──► Agents, Infrastructure
+Core   ◄── Api        ──► Agents, Infrastructure
+Core   ◄── Dashboard
 ```
 
 Infrastructure never references Agents. Worker and Api are thin hosts — no business logic lives in either.
+Dashboard is a standalone Blazor WebAssembly app — it references only Core for shared models and communicates with the backend exclusively through the Api HTTP endpoints.
 
 ---
 
@@ -240,13 +243,118 @@ ASP.NET Core 9 minimal API. Contains **only** endpoint mappings, request/respons
 
 | Method | Path | Description |
 |---|---|---|
-| `POST` | `/api/approvals/{correlationId}` | Teams Adaptive Card webhook — receives Approve/Reject; dispatches `ApprovalReceivedCommand` via MediatR |
-| `GET` | `/api/runs` | Paginated list of `PipelineRunState` rows |
-| `GET` | `/api/runs/{id}` | Full detail for one run including diagnosis and audit trail |
-| `GET` | `/api/runs/{id}/audit` | Audit log for a single run |
-| `GET` | `/health` | ASP.NET health check endpoint |
+| `POST` | `/api/approvals/{id}/approve` | Approve a run; advances state to `Approved` |
+| `POST` | `/api/approvals/{id}/reject` | Reject a run with a reason; advances state to `Rejected` |
+| `GET` | `/api/runs` | Filtered + paged list of `PipelineRunState` rows |
+| `GET` | `/api/runs/summary` | Stat-card counts: totalToday, failedToday, remediatedToday, pendingApproval |
+| `GET` | `/api/runs/{id}` | Full detail for a single run (404 if not found) |
+| `GET` | `/api/runs/{id}/logs` | Raw ADF activity log text (404 if not found) |
+| `GET` | `/api/activity` | Paged `AgentActivityLog` entries |
+| `GET` | `/api/health` | Returns `{ status: "ok", timestamp }` |
 
-**Rule:** Endpoints call MediatR (`ISender.Send(command)`) or read-only query handlers. They never instantiate agents, call repositories, or contain conditional business logic.
+**Rule:** Endpoints call repository methods or MediatR command handlers directly. They never instantiate agents or contain business logic.
+
+---
+
+### AdfAgentMonitor.Dashboard
+
+Blazor WebAssembly standalone PWA. The human-facing monitoring and approval interface.
+
+**Tech:**
+- SDK: `Microsoft.NET.Sdk.BlazorWebAssembly`
+- UI: MudBlazor v7 (`MudThemeProvider`, `MudDialogProvider`, `MudSnackbarProvider` in `App.razor`)
+- PWA offline support via `service-worker.js` (dev) / `service-worker.published.js` (prod)
+
+**Layout:**
+```
+Dashboard/
+├── Program.cs               # WebAssemblyHostBuilder, service registrations
+├── App.razor                # Router + MudProviders; loads localStorage settings on init
+├── _Imports.razor           # Global @using statements
+├── Layout/
+│   ├── MainLayout.razor     # AppBar, Drawer, OfflineBanner, tick loop
+│   └── NavMenu.razor        # MudNavMenu links with pending-approval badge
+├── Pages/
+│   ├── Home.razor           # Dashboard stat cards + recent runs  (@page "/")
+│   ├── Runs.razor           # Filterable run list                 (@page "/runs")
+│   ├── Approvals.razor      # Pending approval queue              (@page "/approvals")
+│   ├── AgentActivity.razor  # Agent activity timeline + live mode (@page "/activity")
+│   └── Settings.razor       # Connection / Notifications / Display (@page "/settings")
+├── Components/
+│   ├── PipelineRunDetailPanel.razor  # Slide-out details panel
+│   ├── ApprovalCard.razor            # Single approval action card
+│   └── OfflineBanner.razor           # Warning banner when navigator.onLine = false
+├── Services/
+│   ├── IMonitorApiClient.cs          # Interface + ActivityPage / ConnectionTestResult records
+│   ├── MonitorApiClient.cs           # HttpClient-based implementation
+│   ├── LayoutState.cs                # Scoped app-wide UI state (dark mode, refresh interval, etc.)
+│   ├── DashboardSettingsService.cs   # Runtime-mutable API URL + key overrides (populated from localStorage)
+│   ├── SettingsOverridingHandler.cs  # DelegatingHandler — applies URL/key overrides per-request
+│   └── NotificationService.cs        # Polls /api/runs/summary every 30 s; fires browser notifications
+└── wwwroot/
+    ├── index.html                    # JS helpers: adfNotifications, adfOffline; SW registration
+    ├── manifest.json                 # PWA manifest
+    ├── service-worker.js             # Dev: network-first for /api/, pass-through for static assets
+    ├── service-worker.published.js   # Prod: cache-first static + network-first /api/ with 5s timeout
+    └── css/app.css                   # Global styles, loading spinner, activity slide-in animation
+```
+
+**Routes:**
+
+| Path | Page | Description |
+|---|---|---|
+| `/` | `Home.razor` | Stat cards (total / failed / remediated / pending), recent runs list |
+| `/runs` | `Runs.razor` | Full filterable/sortable run list |
+| `/approvals` | `Approvals.razor` | Pending-approval queue with Approve / Reject actions |
+| `/activity` | `AgentActivity.razor` | Agent activity timeline; live-mode auto-prepends new entries |
+| `/settings` | `Settings.razor` | Connection, Notifications, and Display settings |
+
+**Key Services:**
+
+| Service | Lifetime | Purpose |
+|---|---|---|
+| `IMonitorApiClient` / `MonitorApiClient` | Scoped (via `AddHttpClient`) | All HTTP calls to the Api backend |
+| `LayoutState` | Scoped | Dark mode, refresh interval, last-refreshed timestamp, pending count, API connectivity |
+| `DashboardSettingsService` | Scoped | In-memory API URL + key overrides; populated from `localStorage` at startup |
+| `SettingsOverridingHandler` | Transient | `DelegatingHandler` that applies `DashboardSettingsService` overrides on every request |
+| `NotificationService` | Scoped | Browser notification polling; started by `App.razor.OnInitializedAsync` |
+
+**localStorage key scheme:**
+
+| Key | Type | Description |
+|---|---|---|
+| `adf:settings:apiBaseUrl` | string | Override API base URL |
+| `adf:settings:apiKey` | string | Override API key |
+| `adf:settings:darkMode` | bool | Dark mode preference |
+| `adf:settings:refreshInterval` | int | Dashboard refresh interval in seconds |
+| `adf:settings:notificationsEnabled` | bool | Master browser notification switch |
+| `adf:settings:notifyOnFailure` | bool | Notify on new pipeline failure |
+| `adf:settings:notifyOnApproval` | bool | Notify when pending-approval count increases |
+| `adf:settings:notifyOnRemediation` | bool | Notify on auto-remediation |
+
+**Rules:**
+- Dashboard never talks to SQL or Hangfire directly — only through Api HTTP calls.
+- No business logic in Blazor pages; all data fetching is via `IMonitorApiClient`.
+- Pages are thin: they render data and dispatch user actions via the API client.
+
+---
+
+### API Contract (Dashboard ↔ Api)
+
+All endpoints require the `X-Api-Key` header. Responses use camelCase JSON with string-serialised enums and `null` fields omitted.
+
+| Method | Path | Auth | Query params | Response |
+|---|---|---|---|---|
+| `GET` | `/api/runs` | X-Api-Key | `status`, `risk`, `name`, `fromDate`, `toDate`, `page`, `pageSize` | `PipelineRunState[]` |
+| `GET` | `/api/runs/summary` | X-Api-Key | — | `{ totalToday, failedToday, remediatedToday, pendingApproval }` |
+| `GET` | `/api/runs/{id}` | X-Api-Key | — | `PipelineRunState` (404 if not found) |
+| `GET` | `/api/runs/{id}/logs` | X-Api-Key | — | raw log text (404 if not found) |
+| `POST` | `/api/approvals/{id}/approve` | X-Api-Key | — | 200 OK |
+| `POST` | `/api/approvals/{id}/reject` | X-Api-Key | body: `{ "reason": "…" }` | 200 OK |
+| `GET` | `/api/activity` | X-Api-Key | `agentName`, `success`, `from`, `to`, `page`, `pageSize` | `{ items, totalCount, page, pageSize }` |
+| `GET` | `/api/health` | X-Api-Key | — | `{ status: "ok", timestamp }` |
+
+**CORS:** The Api reads allowed origins from `Cors:AllowedOrigins` in `appsettings.json`. Development defaults: `http://localhost:5071`, `https://localhost:7071`, `http://localhost:5000`, `https://localhost:7000`.
 
 ---
 

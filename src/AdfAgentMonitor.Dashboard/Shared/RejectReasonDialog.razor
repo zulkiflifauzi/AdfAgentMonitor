@@ -1,0 +1,45 @@
+<MudDialog>
+    <TitleContent>
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudIcon Icon="@Icons.Material.Filled.Cancel" Color="Color.Error" />
+            <MudText Typo="Typo.h6">Reject Run</MudText>
+        </MudStack>
+    </TitleContent>
+
+    <DialogContent>
+        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+            Rejecting <strong>@PipelineName</strong>. A reason is required and will be stored
+            with the run record.
+        </MudText>
+        <MudTextField @bind-Value="_reason"
+                      Label="Rejection reason"
+                      Lines="3"
+                      Required="true"
+                      RequiredError="Reason is required."
+                      Immediate="true"
+                      AutoFocus="true"
+                      Counter="500"
+                      MaxLength="500" />
+    </DialogContent>
+
+    <DialogActions>
+        <MudButton Variant="Variant.Text" OnClick="Cancel">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled"
+                   Color="Color.Error"
+                   Disabled="@string.IsNullOrWhiteSpace(_reason)"
+                   OnClick="Confirm">
+            Reject
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter, EditorRequired] public string PipelineName { get; set; } = string.Empty;
+
+    private string _reason = string.Empty;
+
+    private void Cancel()  => MudDialog.Cancel();
+    private void Confirm() => MudDialog.Close(DialogResult.Ok(_reason));
+}

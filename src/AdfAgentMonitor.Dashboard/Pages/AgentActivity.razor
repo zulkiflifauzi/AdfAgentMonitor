@@ -1,0 +1,490 @@
+@page "/activity"
+@inject IMonitorApiClient ApiClient
+@inject LayoutState       LayoutState
+@implements IAsyncDisposable
+
+<PageTitle>Agent Activity — ADF Agent Monitor</PageTitle>
+
+@* ── Initial load progress ──────────────────────────────────────────────── *@
+
+@if (_loading && !_entries.Any())
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="mb-4" />
+}
+
+@* ── API / load error ───────────────────────────────────────────────────── *@
+
+@if (_errorMessage is not null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-4" ShowCloseIcon="true"
+              CloseIconClicked="@(() => _errorMessage = null)">
+        @_errorMessage
+    </MudAlert>
+}
+
+<MudStack Spacing="5">
+
+    @* ── Page header ─────────────────────────────────────────────────────── *@
+
+    <MudStack Row="true" AlignItems="AlignItems.Center"
+              Justify="Justify.SpaceBetween" Class="flex-wrap gap-2">
+        <div>
+            <MudText Typo="Typo.h4" Style="font-weight:700">Agent Activity</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                Live timeline of every agent action across all pipeline runs.
+            </MudText>
+        </div>
+
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+
+            @* Live mode toggle *@
+            <MudTooltip Text="@(_liveMode ? "Live mode on — polling every 5 s" : "Enable live mode")">
+                <MudToggleIconButton @bind-Toggled="_liveMode"
+                                     Icon="@Icons.Material.Filled.PauseCircle"
+                                     ToggledIcon="@Icons.Material.Filled.PlayCircle"
+                                     Color="Color.Default"
+                                     ToggledColor="Color.Success"
+                                     Size="Size.Small"
+                                     ToggledChanged="OnLiveModeChangedAsync" />
+            </MudTooltip>
+
+            @* Refresh *@
+            <MudTooltip Text="Refresh">
+                <MudIconButton Icon="@Icons.Material.Filled.Refresh"
+                               Color="Color.Default"
+                               Size="Size.Small"
+                               Disabled="@_loading"
+                               OnClick="@ReloadAsync" />
+            </MudTooltip>
+
+        </MudStack>
+    </MudStack>
+
+    @* ── Filter bar ──────────────────────────────────────────────────────── *@
+
+    <MudPaper Elevation="1" Class="pa-3">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3" Class="flex-wrap gap-2">
+
+            <MudSelect T="string?" @bind-Value="_filterAgent" Label="Agent" Variant="Variant.Outlined"
+                       Margin="Margin.Dense" Style="min-width:180px"
+                       AnchorOrigin="Origin.BottomLeft"
+                       Clearable="true" ClearIcon="@Icons.Material.Filled.Clear">
+                <MudSelectItem T="string?" Value="@(null)">All agents</MudSelectItem>
+                <MudSelectItem T="string?" Value="@("MonitorAgent")">MonitorAgent</MudSelectItem>
+                <MudSelectItem T="string?" Value="@("DiagnosticsAgent")">DiagnosticsAgent</MudSelectItem>
+                <MudSelectItem T="string?" Value="@("FixAgent")">FixAgent</MudSelectItem>
+                <MudSelectItem T="string?" Value="@("NotifierAgent")">NotifierAgent</MudSelectItem>
+            </MudSelect>
+
+            <MudSelect T="bool?" @bind-Value="_filterSuccess" Label="Outcome" Variant="Variant.Outlined"
+                       Margin="Margin.Dense" Style="min-width:140px"
+                       AnchorOrigin="Origin.BottomLeft"
+                       Clearable="true" ClearIcon="@Icons.Material.Filled.Clear">
+                <MudSelectItem T="bool?" Value="@(null)">All outcomes</MudSelectItem>
+                <MudSelectItem T="bool?" Value="@((bool?)true)">Success</MudSelectItem>
+                <MudSelectItem T="bool?" Value="@((bool?)false)">Failed</MudSelectItem>
+            </MudSelect>
+
+            <MudDatePicker @bind-Date="_filterFrom" Label="From" Variant="Variant.Outlined"
+                           Margin="Margin.Dense" Style="min-width:160px"
+                           DateFormat="yyyy-MM-dd" Clearable="true" />
+
+            <MudDatePicker @bind-Date="_filterTo" Label="To" Variant="Variant.Outlined"
+                           Margin="Margin.Dense" Style="min-width:160px"
+                           DateFormat="yyyy-MM-dd" Clearable="true" />
+
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                       StartIcon="@Icons.Material.Filled.FilterList"
+                       OnClick="@ReloadAsync"
+                       Disabled="@_loading">
+                Apply
+            </MudButton>
+
+            @if (FiltersActive)
+            {
+                <MudButton Variant="Variant.Text" Color="Color.Default" Size="Size.Small"
+                           StartIcon="@Icons.Material.Filled.FilterListOff"
+                           OnClick="@ClearFilters">
+                    Clear
+                </MudButton>
+            }
+
+        </MudStack>
+    </MudPaper>
+
+    @* ── Agent summary chips ─────────────────────────────────────────────── *@
+
+    @if (_agentCounts.Any())
+    {
+        <MudStack Row="true" Spacing="2" Class="flex-wrap">
+            @foreach (var (name, count) in _agentCounts)
+            {
+                <MudChip T="string"
+                         Color="@AgentColor(name)"
+                         Variant="Variant.Outlined"
+                         Icon="@AgentIcon(name)"
+                         Size="Size.Small"
+                         OnClick="@(() => SelectAgent(name))">
+                    @name · @count
+                </MudChip>
+            }
+        </MudStack>
+    }
+
+    @* ── Empty state ─────────────────────────────────────────────────────── *@
+
+    @if (!_loading && !_entries.Any())
+    {
+        <MudPaper Elevation="1" Class="pa-0">
+            <MudStack AlignItems="AlignItems.Center"
+                      Justify="Justify.Center"
+                      Spacing="3"
+                      Style="padding:72px 24px">
+                <MudIcon Icon="@Icons.Material.Filled.Timeline"
+                         Color="Color.Secondary"
+                         Style="font-size:5rem; opacity:.7" />
+                <MudText Typo="Typo.h5" Style="font-weight:600">No activity yet</MudText>
+                <MudText Typo="Typo.body1" Color="Color.Secondary"
+                         Style="text-align:center; max-width:400px">
+                    Agent activity entries will appear here once pipeline monitoring has started.
+                </MudText>
+            </MudStack>
+        </MudPaper>
+    }
+
+    @* ── Timeline ────────────────────────────────────────────────────────── *@
+
+    @if (_entries.Any())
+    {
+        <MudPaper Elevation="1" Class="pa-4">
+            <MudTimeline TimelinePosition="TimelinePosition.Left">
+
+                @foreach (var log in _entries)
+                {
+                    var isNew = _newEntryIds.Contains(log.Id);
+
+                    <MudTimelineItem Color="@(log.Success ? AgentColor(log.AgentName) : Color.Error)"
+                                     Icon="@(log.Success ? AgentIcon(log.AgentName) : Icons.Material.Filled.ErrorOutline)"
+                                     Size="Size.Small">
+                        <ItemContent>
+                            <div class="@(isNew ? "activity-entry activity-entry--new" : "activity-entry")">
+                                <MudPaper Elevation="0"
+                                          Style="background:var(--mud-palette-surface);
+                                                 padding:12px 16px;
+                                                 border-radius:8px;
+                                                 border:1px solid var(--mud-palette-divider)"
+                                          Class="mb-2">
+                                    <MudStack Spacing="1">
+
+                                        <MudStack Row="true" AlignItems="AlignItems.Center"
+                                                  Justify="Justify.SpaceBetween"
+                                                  Class="flex-wrap gap-1">
+
+                                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                                                <MudChip T="string"
+                                                         Color="@AgentColor(log.AgentName)"
+                                                         Variant="Variant.Filled"
+                                                         Size="Size.Small">
+                                                    @log.AgentName
+                                                </MudChip>
+                                                <MudText Typo="Typo.body2" Style="font-weight:600">
+                                                    @log.Action
+                                                </MudText>
+                                                @if (!log.Success)
+                                                {
+                                                    <MudChip T="string" Color="Color.Error"
+                                                             Variant="Variant.Outlined" Size="Size.Small">
+                                                        Failed
+                                                    </MudChip>
+                                                }
+                                            </MudStack>
+
+                                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                                @log.Timestamp.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")
+                                            </MudText>
+
+                                        </MudStack>
+
+                                        @if (!string.IsNullOrWhiteSpace(log.PipelineName))
+                                        {
+                                            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                                                Pipeline: <strong>@log.PipelineName</strong>
+                                            </MudText>
+                                        }
+
+                                        @if (!string.IsNullOrWhiteSpace(log.ResultMessage))
+                                        {
+                                            <MudText Typo="Typo.caption"
+                                                     Style="font-family:monospace; font-size:0.7rem;
+                                                            white-space:pre-wrap; word-break:break-all;
+                                                            color:var(--mud-palette-text-secondary)">
+                                                @log.ResultMessage
+                                            </MudText>
+                                        }
+
+                                    </MudStack>
+                                </MudPaper>
+                            </div>
+                        </ItemContent>
+                    </MudTimelineItem>
+                }
+
+            </MudTimeline>
+        </MudPaper>
+
+        @* ── Load more ───────────────────────────────────────────────────── *@
+
+        @if (_hasMore)
+        {
+            <MudStack AlignItems="AlignItems.Center">
+                <MudButton Variant="Variant.Outlined"
+                           Color="Color.Default"
+                           Size="Size.Small"
+                           Disabled="@_loadingMore"
+                           StartIcon="@Icons.Material.Filled.ExpandMore"
+                           OnClick="@LoadMoreAsync">
+                    @if (_loadingMore)
+                    {
+                        <MudProgressCircular Indeterminate="true" Size="Size.Small" Class="mr-2" />
+                        <text>Loading…</text>
+                    }
+                    else
+                    {
+                        <text>Load more</text>
+                    }
+                </MudButton>
+            </MudStack>
+        }
+    }
+
+</MudStack>
+
+@code {
+
+    // ── Constants ─────────────────────────────────────────────────────────────
+
+    private const int PageSize = 50;
+
+    // ── State ─────────────────────────────────────────────────────────────────
+
+    private List<AgentActivityLog>         _entries     = [];
+    private HashSet<Guid>                  _newEntryIds = [];
+    private Dictionary<string, int>        _agentCounts = [];
+    private int                            _currentPage = 1;
+    private int                            _totalCount  = 0;
+    private bool                           _loading;
+    private bool                           _loadingMore;
+    private bool                           _liveMode;
+    private string?                        _errorMessage;
+    private CancellationTokenSource        _cts         = new();
+
+    // ── Filters ───────────────────────────────────────────────────────────────
+
+    private string?  _filterAgent;
+    private bool?    _filterSuccess;
+    private DateTime? _filterFrom;
+    private DateTime? _filterTo;
+
+    private bool _hasMore => _entries.Count < _totalCount;
+    private bool FiltersActive => _filterAgent is not null || _filterSuccess.HasValue
+                                  || _filterFrom.HasValue || _filterTo.HasValue;
+
+    // ── Live mode ─────────────────────────────────────────────────────────────
+
+    private PeriodicTimer? _liveTimer;
+
+    // ── Lifecycle ─────────────────────────────────────────────────────────────
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    // ── Data ──────────────────────────────────────────────────────────────────
+
+    private async Task ReloadAsync()
+    {
+        if (_loading) return;
+
+        _loading      = true;
+        _currentPage  = 1;
+        _errorMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            var page = await ApiClient.GetActivityAsync(
+                agentName: _filterAgent,
+                success:   _filterSuccess,
+                from:      _filterFrom.HasValue ? new DateTimeOffset(_filterFrom.Value, TimeSpan.Zero) : null,
+                to:        _filterTo.HasValue   ? new DateTimeOffset(_filterTo.Value,   TimeSpan.Zero) : null,
+                page:      1,
+                pageSize:  PageSize,
+                ct:        _cts.Token);
+
+            _entries    = page.Items;
+            _totalCount = page.TotalCount;
+
+            RebuildAgentCounts();
+            LayoutState.NotifyDataRefreshed();
+            LayoutState.SetApiConnected(true);
+        }
+        catch (OperationCanceledException) { return; }
+        catch (ApiException ex)
+        {
+            _errorMessage = $"API error {ex.StatusCode}: {ex.Message}";
+            LayoutState.SetApiConnected(false);
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Failed to load activity: {ex.Message}";
+            LayoutState.SetApiConnected(false);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task LoadMoreAsync()
+    {
+        if (_loadingMore || !_hasMore) return;
+
+        _loadingMore = true;
+        StateHasChanged();
+
+        try
+        {
+            _currentPage++;
+
+            var page = await ApiClient.GetActivityAsync(
+                agentName: _filterAgent,
+                success:   _filterSuccess,
+                from:      _filterFrom.HasValue ? new DateTimeOffset(_filterFrom.Value, TimeSpan.Zero) : null,
+                to:        _filterTo.HasValue   ? new DateTimeOffset(_filterTo.Value,   TimeSpan.Zero) : null,
+                page:      _currentPage,
+                pageSize:  PageSize,
+                ct:        _cts.Token);
+
+            _entries.AddRange(page.Items);
+            _totalCount = page.TotalCount;
+            RebuildAgentCounts();
+        }
+        catch (OperationCanceledException) { return; }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Failed to load more: {ex.Message}";
+            _currentPage--;
+        }
+        finally
+        {
+            _loadingMore = false;
+        }
+    }
+
+    // ── Live mode ─────────────────────────────────────────────────────────────
+
+    private async Task OnLiveModeChangedAsync(bool enabled)
+    {
+        _liveTimer?.Dispose();
+        _liveTimer = null;
+
+        if (!enabled) return;
+
+        _liveTimer = new PeriodicTimer(TimeSpan.FromSeconds(5));
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                while (await _liveTimer.WaitForNextTickAsync(_cts.Token))
+                    await InvokeAsync(PollNewEntriesAsync);
+            }
+            catch (OperationCanceledException) { }
+        });
+    }
+
+    private async Task PollNewEntriesAsync()
+    {
+        try
+        {
+            var page = await ApiClient.GetActivityAsync(
+                agentName: _filterAgent,
+                success:   _filterSuccess,
+                page:      1,
+                pageSize:  PageSize,
+                ct:        _cts.Token);
+
+            var existingIds = _entries.Select(e => e.Id).ToHashSet();
+            var newItems    = page.Items.Where(e => !existingIds.Contains(e.Id)).ToList();
+
+            if (newItems.Count == 0) return;
+
+            // Prepend new entries and flag them for the slide-in CSS animation.
+            _entries.InsertRange(0, newItems);
+            _totalCount += newItems.Count;
+            _newEntryIds = newItems.Select(e => e.Id).ToHashSet();
+
+            RebuildAgentCounts();
+            StateHasChanged();
+
+            // Remove the "new" class after the animation completes (600 ms).
+            await Task.Delay(600, _cts.Token);
+            _newEntryIds.Clear();
+            StateHasChanged();
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Live update error: {ex.Message}";
+        }
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private void RebuildAgentCounts()
+    {
+        _agentCounts = _entries
+            .GroupBy(e => e.AgentName)
+            .ToDictionary(g => g.Key, g => g.Count());
+    }
+
+    private void ClearFilters()
+    {
+        _filterAgent   = null;
+        _filterSuccess = null;
+        _filterFrom    = null;
+        _filterTo      = null;
+        _ = ReloadAsync();
+    }
+
+    private void SelectAgent(string name)
+    {
+        _filterAgent = _filterAgent == name ? null : name;
+        _ = ReloadAsync();
+    }
+
+    private static Color AgentColor(string name) => name switch
+    {
+        "MonitorAgent"     => Color.Error,
+        "DiagnosticsAgent" => Color.Info,
+        "FixAgent"         => Color.Success,
+        "NotifierAgent"    => Color.Warning,
+        _                  => Color.Default,
+    };
+
+    private static string AgentIcon(string name) => name switch
+    {
+        "MonitorAgent"     => Icons.Material.Filled.MonitorHeart,
+        "DiagnosticsAgent" => Icons.Material.Filled.ManageSearch,
+        "FixAgent"         => Icons.Material.Filled.BuildCircle,
+        "NotifierAgent"    => Icons.Material.Filled.NotificationsActive,
+        _                  => Icons.Material.Filled.SmartToy,
+    };
+
+    // ── Dispose ───────────────────────────────────────────────────────────────
+
+    public async ValueTask DisposeAsync()
+    {
+        _liveTimer?.Dispose();
+        await _cts.CancelAsync();
+        _cts.Dispose();
+    }
+}

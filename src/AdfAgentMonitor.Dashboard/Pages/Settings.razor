@@ -1,0 +1,521 @@
+@page "/settings"
+@inject IJSRuntime               JS
+@inject IMonitorApiClient        ApiClient
+@inject LayoutState              LayoutState
+@inject ISnackbar                Snackbar
+@inject DashboardSettingsService DashboardSettings
+@inject IOptions<ApiClientSettings> ApiSettings
+@implements IAsyncDisposable
+
+<PageTitle>Settings — ADF Agent Monitor</PageTitle>
+
+<MudStack Spacing="5">
+
+    @* ── Page header ─────────────────────────────────────────────────────── *@
+
+    <div>
+        <MudText Typo="Typo.h4" Style="font-weight:700">Settings</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">
+            Connection, notification, and display preferences.
+        </MudText>
+    </div>
+
+    @* ── Tabs ─────────────────────────────────────────────────────────────── *@
+
+    <MudTabs Elevation="1"
+             Rounded="true"
+             ApplyEffectsToContainer="true"
+             PanelClass="pa-6"
+             Color="Color.Primary">
+
+        @* ════════════════════════════════════════════════════════════════════
+           Tab 1 — Connection
+           ════════════════════════════════════════════════════════════════════ *@
+
+        <MudTabPanel Text="Connection" Icon="@Icons.Material.Filled.Cable">
+            <MudStack Spacing="5">
+
+                @* Current live status *@
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                    <MudIcon Icon="@(LayoutState.IsApiConnected
+                                         ? Icons.Material.Filled.CheckCircle
+                                         : Icons.Material.Filled.Error)"
+                             Color="@(LayoutState.IsApiConnected ? Color.Success : Color.Error)"
+                             Size="Size.Small" />
+                    <MudText Typo="Typo.body2">
+                        @(LayoutState.IsApiConnected ? "Connected to API" : "API unreachable")
+                    </MudText>
+                </MudStack>
+
+                <MudDivider />
+
+                @* Editable fields *@
+                <MudStack Spacing="3">
+                    <MudTextField @bind-Value="_apiBaseUrl"
+                                  Label="API Base URL"
+                                  Variant="Variant.Outlined"
+                                  Placeholder="https://your-api.example.com/"
+                                  HelperText="Override the URL from appsettings.json. Leave blank to use the default."
+                                  InputType="InputType.Url"
+                                  Adornment="Adornment.Start"
+                                  AdornmentIcon="@Icons.Material.Filled.Link" />
+
+                    <MudTextField @bind-Value="_apiKey"
+                                  Label="API Key"
+                                  Variant="Variant.Outlined"
+                                  Placeholder="Leave blank to use the default from appsettings.json"
+                                  HelperText="Override the X-Api-Key header. Leave blank to use the default."
+                                  InputType="@(_showKey ? InputType.Text : InputType.Password)"
+                                  Adornment="Adornment.End"
+                                  AdornmentIcon="@(_showKey
+                                      ? Icons.Material.Filled.VisibilityOff
+                                      : Icons.Material.Filled.Visibility)"
+                                  OnAdornmentClick="@(() => _showKey = !_showKey)" />
+                </MudStack>
+
+                <MudAlert Severity="Severity.Info" Dense="true">
+                    Values entered here override <code>wwwroot/appsettings.json</code> and
+                    take effect immediately in the current session. They are also saved to
+                    <code>localStorage</code> so they persist across reloads.
+                    Leave a field blank to revert to the appsettings.json default.
+                </MudAlert>
+
+                @* Action buttons *@
+                <MudStack Row="true" Spacing="2" Class="flex-wrap">
+
+                    <MudButton Variant="Variant.Filled"
+                               Color="Color.Primary"
+                               StartIcon="@Icons.Material.Filled.Save"
+                               Disabled="@_savingConnection"
+                               OnClick="@SaveConnectionAsync">
+                        @if (_savingConnection)
+                        {
+                            <MudProgressCircular Indeterminate="true" Size="Size.Small" Class="mr-2" />
+                            <text>Saving…</text>
+                        }
+                        else
+                        {
+                            <text>Save</text>
+                        }
+                    </MudButton>
+
+                    <MudButton Variant="Variant.Outlined"
+                               Color="Color.Default"
+                               StartIcon="@Icons.Material.Filled.NetworkCheck"
+                               Disabled="@_testingConnection"
+                               OnClick="@RunTestConnectionAsync">
+                        @if (_testingConnection)
+                        {
+                            <MudProgressCircular Indeterminate="true" Size="Size.Small" Class="mr-2" />
+                            <text>Testing…</text>
+                        }
+                        else
+                        {
+                            <text>Test Connection</text>
+                        }
+                    </MudButton>
+
+                    @if (DashboardSettings.HasBaseUrlOverride || DashboardSettings.HasApiKeyOverride)
+                    {
+                        <MudButton Variant="Variant.Text"
+                                   Color="Color.Default"
+                                   StartIcon="@Icons.Material.Filled.RestartAlt"
+                                   OnClick="@ClearConnectionOverridesAsync">
+                            Reset to defaults
+                        </MudButton>
+                    }
+
+                </MudStack>
+
+            </MudStack>
+        </MudTabPanel>
+
+        @* ════════════════════════════════════════════════════════════════════
+           Tab 2 — Notifications
+           ════════════════════════════════════════════════════════════════════ *@
+
+        <MudTabPanel Text="Notifications" Icon="@Icons.Material.Filled.Notifications">
+            <MudStack Spacing="4">
+
+                @* Permission status banner *@
+                @if (_notificationPermission == "denied")
+                {
+                    <MudAlert Severity="Severity.Warning" Dense="true">
+                        Browser notifications have been <strong>blocked</strong>. To re-enable them,
+                        click the lock icon in your browser's address bar and allow notifications for
+                        this site.
+                    </MudAlert>
+                }
+                else if (_notificationPermission == "unsupported")
+                {
+                    <MudAlert Severity="Severity.Info" Dense="true">
+                        Your browser does not support the Web Notifications API.
+                    </MudAlert>
+                }
+
+                @* Master enable *@
+                <MudPaper Elevation="0"
+                          Style="border:1px solid var(--mud-palette-divider); border-radius:8px"
+                          Class="pa-4">
+                    <MudStack Row="true" AlignItems="AlignItems.Center"
+                              Justify="Justify.SpaceBetween">
+                        <MudStack Spacing="0">
+                            <MudText Typo="Typo.body1" Style="font-weight:600">
+                                Enable browser notifications
+                            </MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                Requests Notification API permission and enables in-browser alerts.
+                            </MudText>
+                        </MudStack>
+                        <MudSwitch T="bool"
+                                   Value="@_notificationsEnabled"
+                                   ValueChanged="@OnNotificationsEnabledChangedAsync"
+                                   Color="Color.Primary"
+                                   Disabled="@(_notificationPermission is "denied" or "unsupported")" />
+                    </MudStack>
+                </MudPaper>
+
+                @* Per-event switches *@
+
+                <MudPaper Elevation="0"
+                          Style="border:1px solid var(--mud-palette-divider); border-radius:8px"
+                          Class="pa-4">
+                    <MudStack Row="true" AlignItems="AlignItems.Center"
+                              Justify="Justify.SpaceBetween">
+                        <MudStack Spacing="0">
+                            <MudText Typo="Typo.body1">New pipeline failure</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                Notify when MonitorAgent detects a new failed run.
+                            </MudText>
+                        </MudStack>
+                        <MudSwitch T="bool"
+                                   @bind-Value="_notifyOnFailure"
+                                   Color="Color.Primary"
+                                   Disabled="@(!_notificationsEnabled)"
+                                   ValueChanged="@((_) => _ = SaveNotificationsAsync())" />
+                    </MudStack>
+                </MudPaper>
+
+                <MudPaper Elevation="0"
+                          Style="border:1px solid var(--mud-palette-divider); border-radius:8px"
+                          Class="pa-4">
+                    <MudStack Row="true" AlignItems="AlignItems.Center"
+                              Justify="Justify.SpaceBetween">
+                        <MudStack Spacing="0">
+                            <MudText Typo="Typo.body1">Pending approval</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                Notify when a remediation plan is waiting for your sign-off.
+                            </MudText>
+                        </MudStack>
+                        <MudSwitch T="bool"
+                                   @bind-Value="_notifyOnApproval"
+                                   Color="Color.Primary"
+                                   Disabled="@(!_notificationsEnabled)"
+                                   ValueChanged="@((_) => _ = SaveNotificationsAsync())" />
+                    </MudStack>
+                </MudPaper>
+
+                <MudPaper Elevation="0"
+                          Style="border:1px solid var(--mud-palette-divider); border-radius:8px"
+                          Class="pa-4">
+                    <MudStack Row="true" AlignItems="AlignItems.Center"
+                              Justify="Justify.SpaceBetween">
+                        <MudStack Spacing="0">
+                            <MudText Typo="Typo.body1">Auto-remediation complete</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                Notify when FixAgent resolves a pipeline run automatically.
+                            </MudText>
+                        </MudStack>
+                        <MudSwitch T="bool"
+                                   @bind-Value="_notifyOnRemediation"
+                                   Color="Color.Primary"
+                                   Disabled="@(!_notificationsEnabled)"
+                                   ValueChanged="@((_) => _ = SaveNotificationsAsync())" />
+                    </MudStack>
+                </MudPaper>
+
+            </MudStack>
+        </MudTabPanel>
+
+        @* ════════════════════════════════════════════════════════════════════
+           Tab 3 — Display
+           ════════════════════════════════════════════════════════════════════ *@
+
+        <MudTabPanel Text="Display" Icon="@Icons.Material.Filled.DisplaySettings">
+            <MudStack Spacing="4">
+
+                @* Dark mode *@
+                <MudPaper Elevation="0"
+                          Style="border:1px solid var(--mud-palette-divider); border-radius:8px"
+                          Class="pa-4">
+                    <MudStack Row="true" AlignItems="AlignItems.Center"
+                              Justify="Justify.SpaceBetween">
+                        <MudStack Spacing="0">
+                            <MudText Typo="Typo.body1" Style="font-weight:600">Dark mode</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                Toggle between dark and light theme.
+                            </MudText>
+                        </MudStack>
+                        <MudSwitch T="bool"
+                                   Value="@LayoutState.IsDarkMode"
+                                   ValueChanged="@SetDarkModeAsync"
+                                   Color="Color.Primary" />
+                    </MudStack>
+                </MudPaper>
+
+                <MudDivider />
+
+                @* Refresh interval *@
+                <MudStack Spacing="1">
+                    <MudText Typo="Typo.body1" Style="font-weight:600">
+                        Dashboard refresh interval
+                    </MudText>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-2">
+                        How often the pending-approval count and connection status refresh.
+                    </MudText>
+                    <MudSelect T="int"
+                               Value="@_refreshInterval"
+                               ValueChanged="@SaveRefreshIntervalAsync"
+                               Variant="Variant.Outlined"
+                               Margin="Margin.Dense"
+                               Style="max-width:260px"
+                               AnchorOrigin="Origin.BottomLeft">
+                        @foreach (var (label, val) in _refreshOptions)
+                        {
+                            <MudSelectItem T="int" Value="@val">@label</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudStack>
+
+            </MudStack>
+        </MudTabPanel>
+
+    </MudTabs>
+
+    @* ── About ────────────────────────────────────────────────────────────── *@
+
+    <MudPaper Elevation="1" Class="pa-5">
+        <MudStack Spacing="4">
+            <MudText Typo="Typo.h6" Style="font-weight:600">About</MudText>
+            <MudDivider />
+            <MudStack Spacing="2">
+                @foreach (var (label, value) in _aboutRows)
+                {
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="0">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary"
+                                 Style="min-width:160px">@label</MudText>
+                        <MudText Typo="Typo.body2">@value</MudText>
+                    </MudStack>
+                }
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="0">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary"
+                             Style="min-width:160px">Last Refreshed</MudText>
+                    <MudText Typo="Typo.body2">
+                        @(LayoutState.LastRefreshed.HasValue
+                            ? LayoutState.LastRefreshed.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")
+                            : "—")
+                    </MudText>
+                </MudStack>
+            </MudStack>
+        </MudStack>
+    </MudPaper>
+
+</MudStack>
+
+@code {
+
+    // ── Static data ───────────────────────────────────────────────────────────
+
+    private static readonly (string Label, int Value)[] _refreshOptions =
+    [
+        ("15 seconds",  15),
+        ("30 seconds",  30),
+        ("1 minute",    60),
+        ("5 minutes",   300),
+    ];
+
+    private static readonly (string Label, string Value)[] _aboutRows =
+    [
+        ("Application", "ADF Agent Monitor Dashboard"),
+        ("Framework",   "Blazor WebAssembly · .NET 9"),
+        ("UI Library",  "MudBlazor v7"),
+    ];
+
+    // ── State — Connection ────────────────────────────────────────────────────
+
+    private string _apiBaseUrl       = string.Empty;
+    private string _apiKey           = string.Empty;
+    private bool   _showKey;
+    private bool   _savingConnection;
+    private bool   _testingConnection;
+
+    // ── State — Notifications ─────────────────────────────────────────────────
+
+    private string _notificationPermission = "default";
+    private bool   _notificationsEnabled;
+    private bool   _notifyOnFailure    = true;
+    private bool   _notifyOnApproval   = true;
+    private bool   _notifyOnRemediation;
+
+    // ── State — Display ───────────────────────────────────────────────────────
+
+    private int _refreshInterval = 30;
+
+    // ── Lifecycle ─────────────────────────────────────────────────────────────
+
+    private CancellationTokenSource _cts = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Connection
+        _apiBaseUrl = await GetStoredAsync("adf:settings:apiBaseUrl") ?? string.Empty;
+        _apiKey     = await GetStoredAsync("adf:settings:apiKey")     ?? string.Empty;
+
+        // Notifications
+        try { _notificationPermission = await JS.InvokeAsync<string>("adfNotifications.getPermission"); }
+        catch { _notificationPermission = "unsupported"; }
+
+        _notificationsEnabled = ParseBool(await GetStoredAsync("adf:settings:notificationsEnabled"), false);
+        _notifyOnFailure      = ParseBool(await GetStoredAsync("adf:settings:notifyOnFailure"),    true);
+        _notifyOnApproval     = ParseBool(await GetStoredAsync("adf:settings:notifyOnApproval"),   true);
+        _notifyOnRemediation  = ParseBool(await GetStoredAsync("adf:settings:notifyOnRemediation"), false);
+
+        // Display — reflect current LayoutState (already loaded from localStorage by MainLayout)
+        _refreshInterval = LayoutState.RefreshIntervalSeconds;
+    }
+
+    // ── localStorage helpers ──────────────────────────────────────────────────
+
+    private async Task<string?> GetStoredAsync(string key)
+    {
+        try   { return await JS.InvokeAsync<string?>("localStorage.getItem", key); }
+        catch { return null; }
+    }
+
+    private async Task SetStoredAsync(string key, string value)
+    {
+        try   { await JS.InvokeVoidAsync("localStorage.setItem", key, value); }
+        catch { /* ignore storage errors */ }
+    }
+
+    private async Task RemoveStoredAsync(string key)
+    {
+        try   { await JS.InvokeVoidAsync("localStorage.removeItem", key); }
+        catch { /* ignore storage errors */ }
+    }
+
+    private static bool ParseBool(string? raw, bool fallback)
+        => raw is not null && bool.TryParse(raw, out var v) ? v : fallback;
+
+    // ── Connection actions ────────────────────────────────────────────────────
+
+    private async Task SaveConnectionAsync()
+    {
+        _savingConnection = true;
+        try
+        {
+            var url = string.IsNullOrWhiteSpace(_apiBaseUrl) ? null : _apiBaseUrl.Trim();
+            var key = string.IsNullOrWhiteSpace(_apiKey)     ? null : _apiKey;
+
+            // Persist to localStorage
+            if (url is not null) await SetStoredAsync("adf:settings:apiBaseUrl", url);
+            else                 await RemoveStoredAsync("adf:settings:apiBaseUrl");
+
+            if (key is not null) await SetStoredAsync("adf:settings:apiKey", key);
+            else                 await RemoveStoredAsync("adf:settings:apiKey");
+
+            // Apply immediately to the in-memory override service.
+            DashboardSettings.ApiBaseUrl = url;
+            DashboardSettings.ApiKey     = key;
+
+            Snackbar.Add("Connection settings saved.", Severity.Success);
+        }
+        finally
+        {
+            _savingConnection = false;
+        }
+    }
+
+    private async Task RunTestConnectionAsync()
+    {
+        _testingConnection = true;
+        try
+        {
+            var result = await ApiClient.TestConnectionAsync(_cts.Token);
+            LayoutState.SetApiConnected(result.Success);
+            Snackbar.Add(result.Message, result.Success ? Severity.Success : Severity.Error);
+        }
+        finally
+        {
+            _testingConnection = false;
+        }
+    }
+
+    private async Task ClearConnectionOverridesAsync()
+    {
+        _apiBaseUrl = string.Empty;
+        _apiKey     = string.Empty;
+        DashboardSettings.ApiBaseUrl = null;
+        DashboardSettings.ApiKey     = null;
+        await RemoveStoredAsync("adf:settings:apiBaseUrl");
+        await RemoveStoredAsync("adf:settings:apiKey");
+        Snackbar.Add("Connection overrides cleared — appsettings.json defaults are active.", Severity.Info);
+    }
+
+    // ── Notifications actions ─────────────────────────────────────────────────
+
+    private async Task OnNotificationsEnabledChangedAsync(bool value)
+    {
+        if (value && _notificationPermission != "granted")
+        {
+            try { _notificationPermission = await JS.InvokeAsync<string>("adfNotifications.requestPermission"); }
+            catch { _notificationPermission = "unsupported"; }
+
+            if (_notificationPermission != "granted")
+            {
+                Snackbar.Add(
+                    _notificationPermission == "denied"
+                        ? "Notification permission denied. Allow notifications in your browser settings."
+                        : "Notification permission was not granted.",
+                    Severity.Warning);
+                return; // leave switch off
+            }
+        }
+
+        _notificationsEnabled = value;
+        await SaveNotificationsAsync();
+    }
+
+    private async Task SaveNotificationsAsync()
+    {
+        await SetStoredAsync("adf:settings:notificationsEnabled", _notificationsEnabled.ToString().ToLowerInvariant());
+        await SetStoredAsync("adf:settings:notifyOnFailure",      _notifyOnFailure.ToString().ToLowerInvariant());
+        await SetStoredAsync("adf:settings:notifyOnApproval",     _notifyOnApproval.ToString().ToLowerInvariant());
+        await SetStoredAsync("adf:settings:notifyOnRemediation",  _notifyOnRemediation.ToString().ToLowerInvariant());
+    }
+
+    // ── Display actions ───────────────────────────────────────────────────────
+
+    private async Task SetDarkModeAsync(bool value)
+    {
+        LayoutState.SetDarkMode(value);
+        await SetStoredAsync("adf:settings:darkMode", value.ToString().ToLowerInvariant());
+    }
+
+    private async Task SaveRefreshIntervalAsync(int value)
+    {
+        _refreshInterval = value;
+        LayoutState.SetRefreshInterval(value);
+        await SetStoredAsync("adf:settings:refreshInterval", value.ToString());
+        var label = _refreshOptions.FirstOrDefault(o => o.Value == value).Label ?? $"{value}s";
+        Snackbar.Add($"Refresh interval set to {label}.", Severity.Info);
+    }
+
+    // ── Dispose ───────────────────────────────────────────────────────────────
+
+    public async ValueTask DisposeAsync()
+    {
+        await _cts.CancelAsync();
+        _cts.Dispose();
+    }
+}

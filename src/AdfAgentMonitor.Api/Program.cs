@@ -1,9 +1,28 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using AdfAgentMonitor.Agents;
 using AdfAgentMonitor.Api.Authentication;
 using AdfAgentMonitor.Infrastructure;
 using Hangfire;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// ---------------------------------------------------------------------------
+// CORS — allows the Blazor PWA to call the API from its origin.
+// Allowed origins are configured in appsettings.json under Cors:AllowedOrigins.
+// Example env var: CORS__ALLOWEDORIGINS__0=https://myapp.azurestaticapps.net
+// ---------------------------------------------------------------------------
+
+var allowedOrigins = builder.Configuration
+    .GetSection("Cors:AllowedOrigins")
+    .Get<string[]>() ?? [];
+
+builder.Services.AddCors(opt =>
+    opt.AddPolicy("BlazorPwa", policy =>
+        policy
+            .WithOrigins(allowedOrigins)
+            .WithMethods("GET", "POST")
+            .WithHeaders("Content-Type", "X-Api-Key")));
 
 // ---------------------------------------------------------------------------
 // Infrastructure — EF Core, repositories, ADF, Graph, Anthropic, settings
@@ -51,9 +70,19 @@ builder.Services.AddScoped<ApiKeyAuthFilter>();
 
 // ---------------------------------------------------------------------------
 // MVC + OpenAPI
+// Enums are serialised as their string names (e.g. "PendingApproval") so the
+// Blazor dashboard can deserialise them with JsonStringEnumConverter.
+// Null properties are omitted to keep responses compact.
 // ---------------------------------------------------------------------------
 
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddJsonOptions(opt =>
+    {
+        opt.JsonSerializerOptions.PropertyNamingPolicy        = JsonNamingPolicy.CamelCase;
+        opt.JsonSerializerOptions.DefaultIgnoreCondition      = JsonIgnoreCondition.WhenWritingNull;
+        opt.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+    });
+
 builder.Services.AddOpenApi();
 
 // ---------------------------------------------------------------------------
@@ -64,6 +93,7 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 
 app.UseHttpsRedirection();
+app.UseCors("BlazorPwa");
 app.MapControllers();
 
 app.Run();

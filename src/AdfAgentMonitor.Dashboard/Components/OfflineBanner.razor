@@ -1,0 +1,52 @@
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+@if (_isOffline)
+{
+    <MudAlert Severity="Severity.Warning"
+              Variant="Variant.Filled"
+              Icon="@Icons.Material.Filled.WifiOff"
+              Class="mb-0 rounded-0"
+              Dense="true">
+        You are offline. Showing cached data — live updates paused.
+    </MudAlert>
+}
+
+@code {
+    private bool                    _isOffline;
+    private DotNetObjectReference<OfflineBanner>? _objRef;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        _objRef = DotNetObjectReference.Create(this);
+        try
+        {
+            var isOnline = await JS.InvokeAsync<bool>("adfOffline.register", _objRef);
+            _isOffline = !isOnline;
+            if (_isOffline) StateHasChanged();
+        }
+        catch { /* JS interop unavailable (SSR, test) */ }
+    }
+
+    [JSInvokable]
+    public void OnOnline()
+    {
+        _isOffline = false;
+        InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public void OnOffline()
+    {
+        _isOffline = true;
+        InvokeAsync(StateHasChanged);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try { await JS.InvokeVoidAsync("adfOffline.unregister"); } catch { }
+        _objRef?.Dispose();
+    }
+}

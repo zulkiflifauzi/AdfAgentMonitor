@@ -19,6 +19,7 @@ namespace AdfAgentMonitor.Agents;
 public class MonitorAgent(
     IAdfService adfService,
     IPipelineRunStateRepository repository,
+    IAgentActivityLogRepository activityLog,
     ILogger<MonitorAgent> logger) : IAgent
 {
     // ---------------------------------------------------------------------------
@@ -80,6 +81,25 @@ public class MonitorAgent(
             logger.LogInformation(
                 "Tracked new failed run: pipeline={PipelineName} runId={PipelineRunId} failedAt={FailedAt}",
                 run.PipelineName, run.PipelineRunId, run.FailedAt);
+
+            try
+            {
+                await activityLog.AddAsync(new AgentActivityLog
+                {
+                    Id             = Guid.NewGuid(),
+                    AgentName      = "MonitorAgent",
+                    PipelineRunId  = run.Id,
+                    PipelineName   = run.PipelineName,
+                    Action         = "Detected new failed pipeline run",
+                    ResultMessage  = $"Pipeline '{run.PipelineName}' failed at {run.FailedAt:O}. Tracked as runId={run.PipelineRunId}.",
+                    Success        = true,
+                    Timestamp      = DateTimeOffset.UtcNow,
+                }, ct);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "MonitorAgent failed to write activity log for runId={RunId}.", run.PipelineRunId);
+            }
         }
 
         var message = newCount switch

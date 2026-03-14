@@ -1,5 +1,6 @@
 using AdfAgentMonitor.Core.Entities;
 using AdfAgentMonitor.Core.Enums;
+using AdfAgentMonitor.Core.Models;
 
 namespace AdfAgentMonitor.Core.Interfaces;
 
@@ -26,4 +27,24 @@ public interface IPipelineRunStateRepository
     /// another agent has already modified the same row (optimistic concurrency via UpdatedAt).
     /// </summary>
     Task UpdateAsync(PipelineRunState state, CancellationToken ct = default);
+
+    /// <summary>
+    /// Returns a page of <see cref="PipelineRunState"/> rows, ordered newest-first,
+    /// with optional filters on status, risk, pipeline name, and creation date range.
+    /// </summary>
+    Task<(IReadOnlyList<PipelineRunState> Items, int TotalCount)> GetPagedAsync(
+        PipelineRunStatus? status   = null,
+        RemediationRisk?   risk     = null,
+        string?            name     = null,
+        DateTimeOffset?    fromDate = null,
+        DateTimeOffset?    toDate   = null,
+        int                page     = 1,
+        int                pageSize = 50,
+        CancellationToken  ct       = default);
+
+    /// <summary>
+    /// Returns aggregated counts for the dashboard stat cards.
+    /// All "today" figures are computed relative to midnight UTC of the current day.
+    /// </summary>
+    Task<RunSummary> GetSummaryAsync(CancellationToken ct = default);
 }

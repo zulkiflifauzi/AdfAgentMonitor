@@ -23,6 +23,7 @@ namespace AdfAgentMonitor.Agents;
 public class FixAgent(
     IAdfService adfService,
     IPipelineRunStateRepository repository,
+    IAgentActivityLogRepository activityLog,
     ILogger<FixAgent> logger) : IAgent
 {
     private const int RerunMaxAttempts      = 3;
@@ -127,6 +128,11 @@ public class FixAgent(
                     "NewRunId={NewRunId}.",
                     state.PipelineRunId, attempt, newRunId);
 
+                await WriteActivityLogAsync(state,
+                    "Resolved via pipeline re-run",
+                    $"Pipeline re-triggered (newRunId={newRunId}) after {attempt} attempt(s).",
+                    true, ct);
+
                 return new AgentResult(
                     Success:    true,
                     Message:    $"Pipeline re-triggered (newRunId={newRunId}) after {attempt} attempt(s).",
@@ -164,6 +170,11 @@ public class FixAgent(
             logger.LogInformation(
                 "FixAgent resolved runId={RunId}: IR start accepted.", state.PipelineRunId);
 
+            await WriteActivityLogAsync(state,
+                "Resolved via Integration Runtime restart",
+                "Integration Runtime start operation accepted.",
+                true, ct);
+
             return new AgentResult(
                 Success:    true,
                 Message:    "Integration Runtime start operation accepted.",
@@ -193,9 +204,42 @@ public class FixAgent(
             "FixAgent escalated runId={RunId} to {Status}. Reason: {Reason}",
             state.PipelineRunId, PipelineRunStatus.PendingApproval, reason);
 
+        await WriteActivityLogAsync(state, "Escalated to PendingApproval", reason, true, ct);
+
         return new AgentResult(
             Success:    true,
             Message:    reason,
             NextStatus: PipelineRunStatus.PendingApproval);
+    }
+
+    // ---------------------------------------------------------------------------
+    // Activity log helper — never throws
+    // ---------------------------------------------------------------------------
+
+    private async Task WriteActivityLogAsync(
+        PipelineRunState state,
+        string action,
+        string? resultMessage,
+        bool success,
+        CancellationToken ct)
+    {
+        try
+        {
+            await activityLog.AddAsync(new AgentActivityLog
+            {
+                Id            = Guid.NewGuid(),
+                AgentName     = "FixAgent",
+                PipelineRunId = state.Id,
+                PipelineName  = state.PipelineName,
+                Action        = action,
+                ResultMessage = resultMessage,
+                Success       = success,
+                Timestamp     = DateTimeOffset.UtcNow,
+            }, ct);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "FixAgent failed to write activity log for runId={RunId}.", state.PipelineRunId);
+        }
     }
 }

@@ -1,0 +1,47 @@
+@inject LayoutState              LayoutState
+@inject DashboardSettingsService DashboardSettings
+@inject NotificationService      NotificationService
+@inject IJSRuntime               JS
+@implements IDisposable
+
+@* MudThemeProvider lives here (app root) so it wraps all layouts and dialogs equally.
+   IsDarkMode is driven by LayoutState so the toggle in MainLayout propagates here. *@
+<MudThemeProvider Theme="@AppTheme.Theme" IsDarkMode="@LayoutState.IsDarkMode" />
+<MudDialogProvider />
+<MudSnackbarProvider />
+
+<Router AppAssembly="@typeof(App).Assembly">
+    <Found Context="routeData">
+        <RouteView RouteData="@routeData" DefaultLayout="@typeof(Layout.MainLayout)" />
+        <FocusOnNavigate RouteData="@routeData" Selector="h1" />
+    </Found>
+    <NotFound>
+        <PageTitle>Not found</PageTitle>
+        <LayoutView Layout="@typeof(Layout.MainLayout)">
+            <MudText Typo="Typo.h5" Class="mt-8 text-center">404 — Page not found</MudText>
+        </LayoutView>
+    </NotFound>
+</Router>
+
+@code {
+    protected override void OnInitialized()
+        => LayoutState.OnChange += HandleStateChange;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Restore API connection overrides saved by Settings → Connection tab.
+        var url = await JS.InvokeAsync<string?>("localStorage.getItem", "adf:settings:apiBaseUrl");
+        var key = await JS.InvokeAsync<string?>("localStorage.getItem", "adf:settings:apiKey");
+
+        if (!string.IsNullOrWhiteSpace(url)) DashboardSettings.ApiBaseUrl = url;
+        if (!string.IsNullOrWhiteSpace(key)) DashboardSettings.ApiKey     = key;
+
+        await NotificationService.StartAsync();
+    }
+
+    private void HandleStateChange()
+        => InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+        => LayoutState.OnChange -= HandleStateChange;
+}

@@ -36,6 +36,12 @@ Azure Data Factory
                    FixAgent runs again       Status = Resolved
                    NotifierAgent posts       NotifierAgent posts
                    outcome card              rejection card
+
+Dashboard (Blazor WASM PWA)
+  ├── GET /api/runs, /api/runs/summary  (stat cards + run list)
+  ├── GET /api/runs/{id}, /api/runs/{id}/logs
+  ├── GET /api/activity                 (agent activity timeline)
+  └── GET /api/health                   (connection test)
 ```
 
 All agent-to-agent communication is via the shared `PipelineRunState` SQL table —
@@ -51,7 +57,8 @@ agents never call each other directly.
 | `AdfAgentMonitor.Infrastructure` | EF Core, ADF SDK, Graph SDK, Anthropic SDK, DI wiring |
 | `AdfAgentMonitor.Agents` | All agent implementations + Hangfire orchestrator |
 | `AdfAgentMonitor.Worker` | Hangfire processing host (recurring + background jobs) |
-| `AdfAgentMonitor.Api` | ASP.NET Core API (approval webhook endpoints) |
+| `AdfAgentMonitor.Api` | ASP.NET Core API — approval webhooks + dashboard read endpoints |
+| `AdfAgentMonitor.Dashboard` | Blazor WebAssembly PWA — monitoring UI + approval interface |
 
 ---
 
@@ -123,11 +130,21 @@ The same credential is shared by both the ADF ARM client and the Microsoft Graph
 | `Hangfire:SqlConnectionString` | `HANGFIRE__SQLCONNECTIONSTRING` | Dedicated connection string for Hangfire's job-store schema. Falls back to `ConnectionStrings:DefaultConnection` when empty. |
 | `Hangfire:WorkerCount` | `HANGFIRE__WORKERCOUNT` | Background worker thread count in the Worker host (default: `5`) |
 
-### Api (approval endpoints)
+### Api
 
 | Key | Env var | Description |
 |---|---|---|
-| `Api:ApiKey` | `API__APIKEY` | Secret value expected in the `X-Api-Key` request header on all `/api/approvals/*` endpoints. Never commit to source control. |
+| `Api:ApiKey` | `API__APIKEY` | Secret value expected in the `X-Api-Key` request header on all `/api/*` endpoints. Never commit to source control. |
+| `Cors:AllowedOrigins` | `CORS__ALLOWEDORIGINS__0`, `__1`, … | Array of origins allowed to call the Api from the browser (i.e. the Dashboard host URL). In `appsettings.Development.json` this defaults to the standard Blazor dev ports. |
+
+### Dashboard
+
+The Dashboard reads its API connection settings from `appsettings.json` (baked into the WASM bundle at publish time) and can be overridden at runtime via the **Settings → Connection** tab (values are persisted to `localStorage`).
+
+| Key | Description |
+|---|---|
+| `ApiBaseUrl` | Base URL of the Api host, e.g. `https://localhost:7001`. Must end without a trailing slash. |
+| `ApiKey` | Value sent as the `X-Api-Key` header on every request. |
 
 ---
 
@@ -196,17 +213,38 @@ dotnet user-secrets --project src/AdfAgentMonitor.Api set \
 For Azure authentication locally, `DefaultAzureCredential` will pick up your `az login`
 session automatically — no need to set `TenantId`/`ClientId`/`ClientSecret` for local dev.
 
-### 4. Run both hosts
+### 4. Configure the Dashboard
 
-Open two terminals:
+Add `ApiBaseUrl` and `ApiKey` to `src/AdfAgentMonitor.Dashboard/wwwroot/appsettings.Development.json`
+(create it if it doesn't exist — it is gitignored):
+
+```json
+{
+  "ApiBaseUrl": "https://localhost:7001",
+  "ApiKey": "<same value you set for Api:ApiKey above>"
+}
+```
+
+Alternatively, leave this file empty and set the values after launch via **Settings → Connection** in the UI — they are saved to `localStorage` and take effect immediately.
+
+### 5. Run all three hosts
+
+Open three terminals:
 
 ```bash
 # Terminal 1 — background job processor
 dotnet run --project src/AdfAgentMonitor.Worker
 
-# Terminal 2 — approval webhook API
+# Terminal 2 — approval webhook + dashboard API
 dotnet run --project src/AdfAgentMonitor.Api
+
+# Terminal 3 — Blazor WebAssembly dashboard
+dotnet run --project src/AdfAgentMonitor.Dashboard
 ```
+
+The Dashboard will be available at `https://localhost:7071` (or `http://localhost:5071`).
+Check `src/AdfAgentMonitor.Dashboard/Properties/launchSettings.json` for the exact ports and
+ensure they match the `Cors:AllowedOrigins` list in `appsettings.Development.json`.
 
 ---
 
@@ -238,6 +276,7 @@ HANGFIRE__SQLCONNECTIONSTRING=Server=<sql>;Database=AdfAgentMonitor;...
 
 ```
 API__APIKEY=<random-secret>
+CORS__ALLOWEDORIGINS__0=https://your-dashboard-host.example.com
 ```
 
 **Worker only:**

@@ -1,0 +1,193 @@
+@page "/approvals"
+@inject IMonitorApiClient ApiClient
+@inject LayoutState       LayoutState
+@implements IAsyncDisposable
+
+<PageTitle>Pending Approvals — ADF Agent Monitor</PageTitle>
+
+@* ── Initial load progress ────────────────────────────────────────────────── *@
+
+@if (_loading && !_runs.Any())
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Warning" Class="mb-4" />
+}
+
+@* ── API / load error ─────────────────────────────────────────────────────── *@
+
+@if (_errorMessage is not null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-4" ShowCloseIcon="true"
+              CloseIconClicked="@(() => _errorMessage = null)">
+        @_errorMessage
+    </MudAlert>
+}
+
+<MudStack Spacing="5">
+
+    @* ── Page header ─────────────────────────────────────────────────────── *@
+
+    <MudStack Row="true" AlignItems="AlignItems.Center"
+              Justify="Justify.SpaceBetween" Class="flex-wrap gap-2">
+        <div>
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                <MudText Typo="Typo.h4" Style="font-weight:700">Pending Approvals</MudText>
+                @if (_runs.Any())
+                {
+                    <MudBadge Content="@_runs.Count"
+                              Color="Color.Warning"
+                              Overlap="false"
+                              Bordered="true"
+                              Origin="Origin.CenterRight">
+                        <div style="width:8px" />
+                    </MudBadge>
+                }
+            </MudStack>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                Review and approve or reject each remediation plan below.
+            </MudText>
+        </div>
+
+        <MudTooltip Text="Refresh">
+            <MudIconButton Icon="@Icons.Material.Filled.Refresh"
+                           Color="Color.Default"
+                           Size="Size.Small"
+                           Disabled="@_loading"
+                           OnClick="@LoadAsync" />
+        </MudTooltip>
+    </MudStack>
+
+    @* ── Warning banner (only when there are pending runs) ───────────────── *@
+
+    @if (_runs.Any() || _loading)
+    {
+        <MudAlert Severity="Severity.Warning" Elevation="1" Dense="false">
+            The following pipeline remediations require your approval before they are
+            executed. Review each proposed fix carefully — approved plans are dispatched
+            to the <strong>FixAgent</strong> immediately and cannot be undone.
+        </MudAlert>
+    }
+
+    @* ── Empty state ─────────────────────────────────────────────────────── *@
+
+    @if (!_loading && !_runs.Any())
+    {
+        <MudPaper Elevation="1" Class="pa-0">
+            <MudStack AlignItems="AlignItems.Center"
+                      Justify="Justify.Center"
+                      Spacing="3"
+                      Style="padding:72px 24px">
+                <MudIcon Icon="@Icons.Material.Filled.CheckCircleOutline"
+                         Color="Color.Success"
+                         Style="font-size:5rem; opacity:.85" />
+                <MudText Typo="Typo.h5" Style="font-weight:600">
+                    All caught up
+                </MudText>
+                <MudText Typo="Typo.body1" Color="Color.Secondary"
+                         Style="text-align:center; max-width:400px">
+                    No pending approvals — there are no remediation plans awaiting
+                    your sign-off right now.
+                </MudText>
+            </MudStack>
+        </MudPaper>
+    }
+
+    @* ── Approval cards ───────────────────────────────────────────────────── *@
+
+    @if (_runs.Any())
+    {
+        <MudGrid Spacing="4">
+            @foreach (var run in _runs)
+            {
+                <MudItem xs="12" md="6" lg="4">
+                    <ApprovalCard Run="@run"
+                                  IsRemoving="@_removingIds.Contains(run.Id)"
+                                  OnApproved="@HandleCardActionAsync"
+                                  OnRejected="@HandleCardActionAsync" />
+                </MudItem>
+            }
+        </MudGrid>
+    }
+
+</MudStack>
+
+@code {
+
+    // ── State ─────────────────────────────────────────────────────────────────
+
+    private List<PipelineRunState> _runs       = [];
+    private HashSet<Guid>          _removingIds = [];
+    private bool                   _loading;
+    private string?                _errorMessage;
+
+    private CancellationTokenSource _cts = new();
+
+    // ── Lifecycle ─────────────────────────────────────────────────────────────
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    // ── Data ──────────────────────────────────────────────────────────────────
+
+    private async Task LoadAsync()
+    {
+        if (_loading) return;
+        _loading      = true;
+        _errorMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            _runs = await ApiClient.GetPendingApprovalsAsync(_cts.Token);
+            LayoutState.SetPendingApprovalCount(_runs.Count);
+            LayoutState.NotifyDataRefreshed();
+            LayoutState.SetApiConnected(true);
+        }
+        catch (OperationCanceledException) { return; }
+        catch (ApiException ex)
+        {
+            _errorMessage = $"API error {ex.StatusCode}: {ex.Message}";
+            LayoutState.SetApiConnected(false);
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Failed to load approvals: {ex.Message}";
+            LayoutState.SetApiConnected(false);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    // ── Card action handler ───────────────────────────────────────────────────
+
+    /// <summary>
+    /// Called by <see cref="ApprovalCard"/> after a successful approve or reject.
+    /// Adds the run to the removing set (starts CSS exit transition), waits for
+    /// the transition to complete, then removes the item and updates the badge.
+    /// </summary>
+    private async Task HandleCardActionAsync(PipelineRunState run)
+    {
+        // 1. Mark as removing — triggers the .is-removing CSS class → fade out begins.
+        _removingIds.Add(run.Id);
+        StateHasChanged();
+
+        // 2. Wait slightly longer than the 0.35s CSS transition so the DOM node
+        //    is not removed before the animation finishes playing.
+        await Task.Delay(380);
+
+        // 3. Remove from the list and clean up.
+        _runs.RemoveAll(r => r.Id == run.Id);
+        _removingIds.Remove(run.Id);
+
+        // 4. Synchronise the nav-menu badge with the new count.
+        LayoutState.SetPendingApprovalCount(_runs.Count);
+    }
+
+    // ── Dispose ───────────────────────────────────────────────────────────────
+
+    public async ValueTask DisposeAsync()
+    {
+        await _cts.CancelAsync();
+        _cts.Dispose();
+    }
+}

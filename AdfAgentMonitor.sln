@@ -15,6 +15,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AdfAgentMonitor.Worker", "s
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AdfAgentMonitor.Api", "src\AdfAgentMonitor.Api\AdfAgentMonitor.Api.csproj", "{8EE765E3-1D30-489C-990C-2279492AEBB7}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AdfAgentMonitor.Dashboard", "src\AdfAgentMonitor.Dashboard\AdfAgentMonitor.Dashboard.csproj", "{35CB0D63-17D4-4604-A501-75758C4491DF}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -85,6 +87,18 @@ Global
 		{8EE765E3-1D30-489C-990C-2279492AEBB7}.Release|x64.Build.0 = Release|Any CPU
 		{8EE765E3-1D30-489C-990C-2279492AEBB7}.Release|x86.ActiveCfg = Release|Any CPU
 		{8EE765E3-1D30-489C-990C-2279492AEBB7}.Release|x86.Build.0 = Release|Any CPU
+		{35CB0D63-17D4-4604-A501-75758C4491DF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{35CB0D63-17D4-4604-A501-75758C4491DF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{35CB0D63-17D4-4604-A501-75758C4491DF}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{35CB0D63-17D4-4604-A501-75758C4491DF}.Debug|x64.Build.0 = Debug|Any CPU
+		{35CB0D63-17D4-4604-A501-75758C4491DF}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{35CB0D63-17D4-4604-A501-75758C4491DF}.Debug|x86.Build.0 = Debug|Any CPU
+		{35CB0D63-17D4-4604-A501-75758C4491DF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{35CB0D63-17D4-4604-A501-75758C4491DF}.Release|Any CPU.Build.0 = Release|Any CPU
+		{35CB0D63-17D4-4604-A501-75758C4491DF}.Release|x64.ActiveCfg = Release|Any CPU
+		{35CB0D63-17D4-4604-A501-75758C4491DF}.Release|x64.Build.0 = Release|Any CPU
+		{35CB0D63-17D4-4604-A501-75758C4491DF}.Release|x86.ActiveCfg = Release|Any CPU
+		{35CB0D63-17D4-4604-A501-75758C4491DF}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -95,5 +109,6 @@ Global
 		{ED9F497C-675D-471A-94C5-3AE930305BA6} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{47E71893-A5CF-4956-9A33-C04C3B4BC88B} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{8EE765E3-1D30-489C-990C-2279492AEBB7} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{35CB0D63-17D4-4604-A501-75758C4491DF} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 	EndGlobalSection
 EndGlobal

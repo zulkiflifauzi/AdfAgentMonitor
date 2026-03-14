@@ -1,0 +1,694 @@
+@*
+    Enhanced run detail panel — used as the content of Anchor.End MudDrawers
+    across Dashboard, PipelineRuns, and Approvals pages.
+
+    Self-contained: injects its own API client, dialog, snackbar, and JS services.
+    Callers receive OnApproved / OnRejected EventCallbacks (no args) after the
+    action succeeds, so they can refresh their own data and close the drawer.
+*@
+
+@inject IMonitorApiClient ApiClient
+@inject IDialogService    DialogService
+@inject ISnackbar         Snackbar
+@inject IJSRuntime        JS
+
+<MudStack Spacing="0" Style="height:100%; display:flex; flex-direction:column; overflow:hidden">
+
+    @* ── Header ───────────────────────────────────────────────────────────── *@
+
+    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween"
+              Style="flex-shrink:0; padding:14px 16px; border-bottom:1px solid var(--mud-palette-divider)">
+        <div style="min-width:0; overflow:hidden">
+            <MudText Typo="Typo.h6" Style="font-weight:600">Run Details</MudText>
+            <MudText Typo="Typo.caption" Color="Color.Secondary"
+                     Style="font-family:monospace; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:block; max-width:340px">
+                @Run.PipelineRunId
+            </MudText>
+        </div>
+        @if (OnClose.HasDelegate)
+        {
+            <MudIconButton Icon="@Icons.Material.Filled.Close"
+                           Size="Size.Medium"
+                           OnClick="@(() => OnClose.InvokeAsync())" />
+        }
+    </MudStack>
+
+    @* ── Tabs ─────────────────────────────────────────────────────────────── *@
+
+    <div class="panel-tabs-host">
+        <MudTabs ActivePanelIndex="@_activeTab"
+                 ActivePanelIndexChanged="OnTabChangedAsync"
+                 Elevation="0"
+                 Rounded="false"
+                 ApplyEffectsToContainer="true"
+                 TabHeaderClass="px-2"
+                 PanelClass="panel-tab-scroll"
+                 Style="display:flex; flex-direction:column; height:100%">
+
+            @* ────────── Tab 1 — Overview ────────────────────────────────── *@
+
+            <MudTabPanel Text="Overview" Icon="@Icons.Material.Filled.Info">
+                <MudStack Spacing="5" Class="pa-4">
+
+                    @* ── Field grid ──────────────────────────────────────── *@
+
+                    <MudGrid Spacing="3">
+
+                        <MudItem xs="12">
+                            <MudStack Spacing="0">
+                                <MudText Typo="Typo.overline" Color="Color.Secondary">Pipeline</MudText>
+                                <MudText Typo="Typo.body1" Style="font-weight:600">@Run.PipelineName</MudText>
+                            </MudStack>
+                        </MudItem>
+
+                        <MudItem xs="12" sm="6">
+                            <MudStack Spacing="0">
+                                <MudText Typo="Typo.overline" Color="Color.Secondary">Factory</MudText>
+                                <MudText Typo="Typo.body2">@Run.FactoryName</MudText>
+                            </MudStack>
+                        </MudItem>
+
+                        <MudItem xs="12" sm="6">
+                            <MudStack Spacing="0">
+                                <MudText Typo="Typo.overline" Color="Color.Secondary">Status</MudText>
+                                @{ var (sc, sl) = StatusChip(Run.Status); }
+                                <div>
+                                    <MudChip T="string" Color="@sc" Size="Size.Small"
+                                             Variant="Variant.Filled">@sl</MudChip>
+                                </div>
+                            </MudStack>
+                        </MudItem>
+
+                        <MudItem xs="12">
+                            <MudStack Spacing="0">
+                                <MudText Typo="Typo.overline" Color="Color.Secondary">ADF Run ID</MudText>
+                                <MudText Typo="Typo.caption"
+                                         Style="font-family:monospace; word-break:break-all">
+                                    @Run.PipelineRunId
+                                </MudText>
+                            </MudStack>
+                        </MudItem>
+
+                        <MudItem xs="12" sm="6">
+                            <MudStack Spacing="0">
+                                <MudText Typo="Typo.overline" Color="Color.Secondary">Failed At</MudText>
+                                <MudText Typo="Typo.body2">
+                                    @(Run.FailedAt?.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss zzz") ?? "—")
+                                </MudText>
+                            </MudStack>
+                        </MudItem>
+
+                        <MudItem xs="12" sm="6">
+                            <MudStack Spacing="0">
+                                <MudText Typo="Typo.overline" Color="Color.Secondary">Resolved At</MudText>
+                                <MudText Typo="Typo.body2">
+                                    @(Run.ResolvedAt?.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss zzz") ?? "—")
+                                </MudText>
+                            </MudStack>
+                        </MudItem>
+
+                        <MudItem xs="12" sm="6">
+                            <MudStack Spacing="0">
+                                <MudText Typo="Typo.overline" Color="Color.Secondary">Created</MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                    @Run.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")
+                                </MudText>
+                            </MudStack>
+                        </MudItem>
+
+                        <MudItem xs="12" sm="6">
+                            <MudStack Spacing="0">
+                                <MudText Typo="Typo.overline" Color="Color.Secondary">Updated</MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                    @Run.UpdatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")
+                                </MudText>
+                            </MudStack>
+                        </MudItem>
+
+                    </MudGrid>
+
+                    @* ── Lifecycle timeline ────────────────────────────── *@
+
+                    <div>
+                        <MudText Typo="Typo.overline" Color="Color.Secondary" Class="mb-2">
+                            Lifecycle
+                        </MudText>
+
+                        <MudTimeline TimelinePosition="TimelinePosition.Left"
+                                     TimelineAlign="TimelineAlign.Start">
+
+                            @* Step 1 — Failure detected *@
+                            <MudTimelineItem Color="Color.Error"
+                                             Icon="@Icons.Material.Filled.MonitorHeart"
+                                             Size="Size.Small">
+                                <ItemContent>
+                                    <MudStack Spacing="0" Class="pb-3">
+                                        <MudText Typo="Typo.body2" Style="font-weight:600">Failure Detected</MudText>
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary">MonitorAgent</MudText>
+                                        @if (Run.FailedAt.HasValue)
+                                        {
+                                            <MudText Typo="Typo.caption" Style="opacity:.65">
+                                                @Run.FailedAt.Value.ToLocalTime().ToString("HH:mm:ss · MMM d")
+                                            </MudText>
+                                        }
+                                    </MudStack>
+                                </ItemContent>
+                            </MudTimelineItem>
+
+                            @* Step 2 — Diagnosed *@
+                            @if (Run.DiagnosisCode.HasValue || !string.IsNullOrWhiteSpace(Run.DiagnosisSummary))
+                            {
+                                <MudTimelineItem Color="Color.Info"
+                                                 Icon="@Icons.Material.Filled.ManageSearch"
+                                                 Size="Size.Small">
+                                    <ItemContent>
+                                        <MudStack Spacing="0" Class="pb-3">
+                                            <MudText Typo="Typo.body2" Style="font-weight:600">Diagnosed</MudText>
+                                            <MudText Typo="Typo.caption" Color="Color.Secondary">DiagnosticsAgent</MudText>
+                                            @if (Run.DiagnosisCode.HasValue)
+                                            {
+                                                @{ var (_, dcLabel) = DiagnosisChip(Run.DiagnosisCode.Value); }
+                                                <MudText Typo="Typo.caption">@dcLabel</MudText>
+                                            }
+                                        </MudStack>
+                                    </ItemContent>
+                                </MudTimelineItem>
+                            }
+
+                            @* Step 3 — Approval workflow *@
+                            @if (Run.Status == PipelineRunStatus.PendingApproval
+                                 || !string.IsNullOrWhiteSpace(Run.ApprovalStatus)
+                                 || Run.TeamsMessageId is not null)
+                            {
+                                @{
+                                    var approvalColor = Run.ApprovalStatus switch
+                                    {
+                                        "Approved" => Color.Success,
+                                        "Rejected" => Color.Error,
+                                        _          => Color.Warning,
+                                    };
+                                    var approvalIcon = Run.ApprovalStatus switch
+                                    {
+                                        "Approved" => Icons.Material.Filled.CheckCircle,
+                                        "Rejected" => Icons.Material.Filled.Cancel,
+                                        _          => Icons.Material.Filled.NotificationsActive,
+                                    };
+                                    var approvalLabel = Run.ApprovalStatus switch
+                                    {
+                                        "Approved" => "Approved",
+                                        "Rejected" => "Rejected",
+                                        _          => "Awaiting Approval",
+                                    };
+                                }
+                                <MudTimelineItem Color="@approvalColor"
+                                                 Icon="@approvalIcon"
+                                                 Size="Size.Small">
+                                    <ItemContent>
+                                        <MudStack Spacing="0" Class="pb-3">
+                                            <MudText Typo="Typo.body2" Style="font-weight:600">
+                                                @approvalLabel
+                                            </MudText>
+                                            <MudText Typo="Typo.caption" Color="Color.Secondary">NotifierAgent → Human</MudText>
+                                        </MudStack>
+                                    </ItemContent>
+                                </MudTimelineItem>
+                            }
+
+                            @* Step 4 — Fix applied *@
+                            @if (Run.Status is PipelineRunStatus.Remediating or PipelineRunStatus.Resolved)
+                            {
+                                @{
+                                    var fixDone  = Run.Status == PipelineRunStatus.Resolved;
+                                    var fixColor = fixDone ? Color.Success : Color.Warning;
+                                    var fixIcon  = fixDone
+                                        ? Icons.Material.Filled.CheckCircle
+                                        : Icons.Material.Filled.BuildCircle;
+                                }
+                                <MudTimelineItem Color="@fixColor" Icon="@fixIcon" Size="Size.Small">
+                                    <ItemContent>
+                                        <MudStack Spacing="0" Class="pb-3">
+                                            <MudText Typo="Typo.body2" Style="font-weight:600">
+                                                @(fixDone ? "Remediation Complete" : "Remediating…")
+                                            </MudText>
+                                            <MudText Typo="Typo.caption" Color="Color.Secondary">FixAgent</MudText>
+                                            @if (Run.ResolvedAt.HasValue)
+                                            {
+                                                <MudText Typo="Typo.caption" Style="opacity:.65">
+                                                    @Run.ResolvedAt.Value.ToLocalTime().ToString("HH:mm:ss · MMM d")
+                                                </MudText>
+                                            }
+                                        </MudStack>
+                                    </ItemContent>
+                                </MudTimelineItem>
+                            }
+
+                        </MudTimeline>
+                    </div>
+
+                </MudStack>
+            </MudTabPanel>
+
+            @* ────────── Tab 2 — Diagnosis ───────────────────────────────── *@
+
+            <MudTabPanel Text="Diagnosis" Icon="@Icons.Material.Filled.ManageSearch">
+                <MudStack Spacing="4" Class="pa-4">
+
+                    @if (!Run.DiagnosisCode.HasValue
+                         && string.IsNullOrWhiteSpace(Run.DiagnosisSummary)
+                         && !Run.RemediationRisk.HasValue)
+                    {
+                        <MudStack AlignItems="AlignItems.Center" Class="pa-10">
+                            <MudIcon Icon="@Icons.Material.Filled.HourglassEmpty"
+                                     Color="Color.Secondary"
+                                     Style="font-size:3.5rem; opacity:.35" />
+                            <MudText Typo="Typo.body1" Color="Color.Secondary">
+                                Diagnosis not yet available
+                            </MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                The DiagnosticsAgent has not analysed this run yet.
+                            </MudText>
+                        </MudStack>
+                    }
+                    else
+                    {
+                        @* ── Diagnosis code — large chip ─────────────────── *@
+                        @if (Run.DiagnosisCode.HasValue)
+                        {
+                            @{ var (dcc, dcl) = DiagnosisChip(Run.DiagnosisCode.Value); }
+                            <div>
+                                <MudText Typo="Typo.overline" Color="Color.Secondary" Class="mb-1">
+                                    Diagnosis Code
+                                </MudText>
+                                <MudChip T="string"
+                                         Color="@dcc"
+                                         Size="Size.Large"
+                                         Variant="Variant.Filled"
+                                         Icon="@Icons.Material.Filled.BugReport"
+                                         Style="font-size:0.9rem; font-weight:600">
+                                    @dcl
+                                </MudChip>
+                            </div>
+                        }
+
+                        @* ── Summary — log-style paper ────────────────────── *@
+                        @if (!string.IsNullOrWhiteSpace(Run.DiagnosisSummary))
+                        {
+                            <div>
+                                <MudText Typo="Typo.overline" Color="Color.Secondary" Class="mb-1">
+                                    Analysis
+                                </MudText>
+                                <MudPaper Elevation="0"
+                                          Style="background:var(--mud-palette-background);
+                                                 border:1px solid var(--mud-palette-divider);
+                                                 border-radius:6px;
+                                                 padding:12px 14px;
+                                                 max-height:180px;
+                                                 overflow-y:auto">
+                                    <MudText Style="font-family:monospace;
+                                                    font-size:0.775rem;
+                                                    white-space:pre-wrap;
+                                                    word-break:break-all;
+                                                    line-height:1.55">
+                                        @Run.DiagnosisSummary
+                                    </MudText>
+                                </MudPaper>
+                            </div>
+                        }
+
+                        @* ── Remediation plan — MudAlert Info ─────────────── *@
+                        @if (!string.IsNullOrWhiteSpace(Run.RemediationPlan))
+                        {
+                            <div>
+                                <MudText Typo="Typo.overline" Color="Color.Secondary" Class="mb-1">
+                                    Remediation Plan
+                                </MudText>
+                                <MudAlert Severity="Severity.Info"
+                                          Elevation="0"
+                                          Style="font-family:monospace;
+                                                 font-size:0.75rem;
+                                                 white-space:pre-wrap;
+                                                 word-break:break-all;
+                                                 max-height:200px;
+                                                 overflow-y:auto">
+                                    @Run.RemediationPlan
+                                </MudAlert>
+                            </div>
+                        }
+
+                        @* ── Risk level — MudRating ───────────────────────── *@
+                        @if (Run.RemediationRisk.HasValue)
+                        {
+                            @{ var (rval, rcol, rlabel) = RiskRating(Run.RemediationRisk.Value); }
+                            <div>
+                                <MudText Typo="Typo.overline" Color="Color.Secondary" Class="mb-1">
+                                    Remediation Risk
+                                </MudText>
+                                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+                                    <MudRating SelectedValue="@rval"
+                                               MaxValue="5"
+                                               ReadOnly="true"
+                                               Color="@rcol"
+                                               EmptyIconColor="Color.Default"
+                                               Size="Size.Medium" />
+                                    <MudText Typo="Typo.body2" Style="font-weight:600">
+                                        @rlabel
+                                    </MudText>
+                                </MudStack>
+                            </div>
+                        }
+                    }
+
+                </MudStack>
+            </MudTabPanel>
+
+            @* ────────── Tab 3 — Raw Logs ─────────────────────────────────── *@
+
+            <MudTabPanel Text="Raw Logs" Icon="@Icons.Material.Filled.Article">
+                <MudStack Spacing="2" Class="pa-4">
+
+                    @* ── Toolbar ──────────────────────────────────────────── *@
+                    <MudStack Row="true" AlignItems="AlignItems.Center"
+                              Justify="Justify.SpaceBetween">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                            ADF activity log · @Run.PipelineRunId[..Math.Min(8, Run.PipelineRunId.Length)]…
+                        </MudText>
+                        <MudStack Row="true" Spacing="1">
+                            <MudTooltip Text="Reload logs">
+                                <MudIconButton Icon="@Icons.Material.Filled.Refresh"
+                                               Size="Size.Small"
+                                               Color="Color.Default"
+                                               Disabled="@_logsLoading"
+                                               OnClick="@(() => LoadLogsAsync(force: true))" />
+                            </MudTooltip>
+                            <MudTooltip Text="@(_copied ? "Copied!" : "Copy to clipboard")">
+                                <MudIconButton Icon="@(_copied
+                                                           ? Icons.Material.Filled.Check
+                                                           : Icons.Material.Filled.ContentCopy)"
+                                               Color="@(_copied ? Color.Success : Color.Default)"
+                                               Size="Size.Small"
+                                               Disabled="@(string.IsNullOrEmpty(_logText))"
+                                               OnClick="CopyLogsAsync" />
+                            </MudTooltip>
+                        </MudStack>
+                    </MudStack>
+
+                    @if (_logsLoading)
+                    {
+                        <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+                    }
+
+                    @if (_logsError is not null)
+                    {
+                        <MudAlert Severity="Severity.Warning" Dense="true">@_logsError</MudAlert>
+                    }
+
+                    @* ── Scrollable log area ───────────────────────────────── *@
+                    <MudPaper Elevation="0"
+                              Style="background:var(--mud-palette-background);
+                                     border:1px solid var(--mud-palette-divider);
+                                     border-radius:6px;
+                                     padding:12px 14px;
+                                     height:380px;
+                                     overflow-y:auto">
+                        @if (!string.IsNullOrEmpty(_logText))
+                        {
+                            <pre style="margin:0;
+                                        font-family:monospace;
+                                        font-size:0.72rem;
+                                        line-height:1.55;
+                                        white-space:pre-wrap;
+                                        word-break:break-all;
+                                        color:var(--mud-palette-text-primary)">@_logText</pre>
+                        }
+                        else if (!_logsLoading)
+                        {
+                            <MudStack AlignItems="AlignItems.Center" Class="pa-10">
+                                <MudIcon Icon="@Icons.Material.Filled.Article"
+                                         Color="Color.Secondary"
+                                         Style="font-size:3.5rem; opacity:.35" />
+                                <MudText Typo="Typo.body2" Color="Color.Secondary">
+                                    No log data available
+                                </MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                    Logs are stored after the DiagnosticsAgent analyses the run.
+                                </MudText>
+                            </MudStack>
+                        }
+                    </MudPaper>
+
+                </MudStack>
+            </MudTabPanel>
+
+        </MudTabs>
+    </div>
+
+    @* ── Sticky footer — approve / reject (PendingApproval only) ──────────── *@
+
+    @if (Run.Status == PipelineRunStatus.PendingApproval
+         && (OnApproved.HasDelegate || OnRejected.HasDelegate))
+    {
+        <MudPaper Elevation="4" Square="true"
+                  Style="flex-shrink:0;
+                         border-top:1px solid var(--mud-palette-divider);
+                         padding:12px 16px">
+            <MudStack Row="true" Spacing="2" Justify="Justify.FlexEnd"
+                      AlignItems="AlignItems.Center">
+                @if (_processing)
+                {
+                    <MudProgressCircular Indeterminate="true"
+                                         Size="Size.Small"
+                                         Color="Color.Primary" />
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">Processing…</MudText>
+                }
+                else
+                {
+                    <MudButton Variant="Variant.Outlined"
+                               Color="Color.Error"
+                               StartIcon="@Icons.Material.Filled.Cancel"
+                               OnClick="OpenRejectDialogAsync">
+                        Reject
+                    </MudButton>
+                    <MudButton Variant="Variant.Filled"
+                               Color="Color.Success"
+                               StartIcon="@Icons.Material.Filled.CheckCircle"
+                               OnClick="OpenApproveConfirmAsync">
+                        Approve
+                    </MudButton>
+                }
+            </MudStack>
+        </MudPaper>
+    }
+
+</MudStack>
+
+@code {
+
+    // ── Parameters ────────────────────────────────────────────────────────────
+
+    [Parameter, EditorRequired] public PipelineRunState Run       { get; set; } = default!;
+    [Parameter]                 public EventCallback    OnClose   { get; set; }
+
+    /// <summary>Fired after a successful approve so the parent can reload and close the drawer.</summary>
+    [Parameter] public EventCallback OnApproved { get; set; }
+
+    /// <summary>Fired after a successful reject so the parent can reload and close the drawer.</summary>
+    [Parameter] public EventCallback OnRejected { get; set; }
+
+    // ── UI state ──────────────────────────────────────────────────────────────
+
+    private int  _activeTab;
+    private bool _processing;
+    private bool _copied;
+
+    // logs
+    private string? _logText;
+    private bool    _logsLoading;
+    private bool    _logsLoaded;
+    private string? _logsError;
+
+    // track run identity so state resets when the drawer switches to a different run
+    private Guid _loadedRunId;
+
+    // ── Parameter change tracking ────────────────────────────────────────────
+
+    protected override void OnParametersSet()
+    {
+        if (Run.Id == _loadedRunId) return;
+
+        _loadedRunId = Run.Id;
+        _activeTab   = 0;
+        _logText     = null;
+        _logsLoaded  = false;
+        _logsError   = null;
+        _copied      = false;
+    }
+
+    // ── Tab activation ────────────────────────────────────────────────────────
+
+    private async Task OnTabChangedAsync(int index)
+    {
+        _activeTab = index;
+        if (index == 2 && !_logsLoaded)
+            await LoadLogsAsync();
+    }
+
+    // ── Log loading ───────────────────────────────────────────────────────────
+
+    private async Task LoadLogsAsync(bool force = false)
+    {
+        if (_logsLoading) return;
+        if (_logsLoaded && !force) return;
+
+        _logsLoading = true;
+        _logsError   = null;
+        StateHasChanged();
+
+        try
+        {
+            _logText    = await ApiClient.GetRunLogsAsync(Run.Id);
+            _logsLoaded = true;
+        }
+        catch (ApiException ex) when (ex.StatusCode == 404)
+        {
+            _logText    = null;
+            _logsLoaded = true;
+        }
+        catch (Exception ex)
+        {
+            _logsError = $"Could not load logs: {ex.Message}";
+        }
+        finally
+        {
+            _logsLoading = false;
+        }
+    }
+
+    // ── Clipboard ─────────────────────────────────────────────────────────────
+
+    private async Task CopyLogsAsync()
+    {
+        if (string.IsNullOrEmpty(_logText)) return;
+
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", _logText);
+            _copied = true;
+            StateHasChanged();
+            await Task.Delay(2000);
+            _copied = false;
+        }
+        catch
+        {
+            Snackbar.Add("Clipboard write failed — try copying manually.", Severity.Warning);
+        }
+    }
+
+    // ── Approve / Reject ──────────────────────────────────────────────────────
+
+    private async Task OpenApproveConfirmAsync()
+    {
+        var confirmed = await DialogService.ShowMessageBox(
+            "Approve Remediation",
+            $"Approve the remediation plan for \"{Run.PipelineName}\"? " +
+            "The fix agent will execute it immediately.",
+            yesText:    "Approve",
+            cancelText: "Cancel");
+
+        if (confirmed != true) return;
+
+        _processing = true;
+        StateHasChanged();
+        try
+        {
+            await ApiClient.ApproveAsync(Run.Id);
+            Snackbar.Add($"Approved — fix agent has been queued for \"{Run.PipelineName}\".",
+                         Severity.Success);
+            await OnApproved.InvokeAsync();
+        }
+        catch (ApiException ex)
+        {
+            Snackbar.Add($"Approve failed ({ex.StatusCode}): {ex.Message}", Severity.Error);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Approve failed: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _processing = false;
+        }
+    }
+
+    private async Task OpenRejectDialogAsync()
+    {
+        var parameters = new DialogParameters<RejectReasonDialog>
+        {
+            { x => x.PipelineName, Run.PipelineName },
+        };
+
+        var dialog = await DialogService.ShowAsync<RejectReasonDialog>("Reject Run", parameters);
+        var result = await dialog.Result;
+
+        if (result is null || result.Canceled) return;
+
+        var reason = result.Data as string ?? string.Empty;
+
+        _processing = true;
+        StateHasChanged();
+        try
+        {
+            await ApiClient.RejectAsync(Run.Id, reason);
+            Snackbar.Add($"Rejected \"{Run.PipelineName}\".", Severity.Info);
+            await OnRejected.InvokeAsync();
+        }
+        catch (ApiException ex)
+        {
+            Snackbar.Add($"Reject failed ({ex.StatusCode}): {ex.Message}", Severity.Error);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Reject failed: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _processing = false;
+        }
+    }
+
+    // ── Static helpers ────────────────────────────────────────────────────────
+
+    private static (Color color, string label) StatusChip(PipelineRunStatus s) => s switch
+    {
+        PipelineRunStatus.Failed          => (Color.Error,     "Failed"),
+        PipelineRunStatus.Remediating     => (Color.Warning,   "Remediating"),
+        PipelineRunStatus.PendingApproval => (Color.Warning,   "Pending Approval"),
+        PipelineRunStatus.Resolved        => (Color.Success,   "Resolved"),
+        PipelineRunStatus.Running         => (Color.Secondary, "Running"),
+        PipelineRunStatus.Succeeded       => (Color.Success,   "Succeeded"),
+        PipelineRunStatus.Cancelled       => (Color.Default,   "Cancelled"),
+        _                                 => (Color.Default,   s.ToString()),
+    };
+
+    // Maps DiagnosisCode to a chip color and a human-readable label.
+    private static (Color color, string label) DiagnosisChip(DiagnosisCode code) => code switch
+    {
+        DiagnosisCode.SourceUnreachable   => (Color.Error,   "Source Unreachable"),
+        DiagnosisCode.SinkThrottled       => (Color.Warning, "Sink Throttled"),
+        DiagnosisCode.IROffline           => (Color.Error,   "IR Offline"),
+        DiagnosisCode.DataValidationError => (Color.Warning, "Data Validation Error"),
+        DiagnosisCode.CredentialExpired   => (Color.Error,   "Credential Expired"),
+        DiagnosisCode.TransformationError => (Color.Warning, "Transformation Error"),
+        DiagnosisCode.Unknown             => (Color.Default, "Unknown"),
+        _                                 => (Color.Default, code.ToString()),
+    };
+
+    // Returns (star value 1-5, star color, descriptive label).
+    // Low=1 amber · Medium=3 orange (Warning) · High=5 red.
+    private static (int value, Color color, string label) RiskRating(RemediationRisk r) => r switch
+    {
+        RemediationRisk.Low    => (1, Color.Warning, "Low — auto-remediation safe"),
+        RemediationRisk.Medium => (3, Color.Warning, "Medium — human review recommended"),
+        RemediationRisk.High   => (5, Color.Error,   "High — human approval required"),
+        _                      => (0, Color.Default, r.ToString()),
+    };
+}

@@ -1,0 +1,218 @@
+@inherits LayoutComponentBase
+@inject LayoutState      LayoutState
+@inject IMonitorApiClient ApiClient
+@inject IJSRuntime        JS
+@implements IAsyncDisposable
+
+<MudLayout>
+
+    @* ── AppBar ────────────────────────────────────────────────────────────── *@
+    <MudAppBar Elevation="0" Dense="false">
+
+        @* Hamburger — toggles drawer on all screen sizes *@
+        <MudIconButton Icon="@Icons.Material.Filled.Menu"
+                       Color="Color.Inherit"
+                       Edge="Edge.Start"
+                       Title="Toggle navigation"
+                       OnClick="@ToggleDrawer" />
+
+        @* Title *@
+        <MudText Typo="Typo.h6" Class="ml-2" Style="font-weight:600; letter-spacing:0.3px; white-space:nowrap">
+            ADF Agent Monitor
+        </MudText>
+
+        <MudSpacer />
+
+        @* Last updated — hidden on xs to avoid crowding *@
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1"
+                  Class="mr-3 d-none d-sm-flex">
+            <MudIcon Icon="@Icons.Material.Filled.Schedule"
+                     Size="Size.Small"
+                     Color="Color.Secondary" />
+            <MudText Typo="Typo.caption" Color="Color.Secondary" Style="white-space:nowrap">
+                @LastUpdatedText
+            </MudText>
+        </MudStack>
+
+        @* Connection status chip *@
+        <MudTooltip Text="@(LayoutState.IsApiConnected ? "API reachable" : "API unreachable — retrying…")"
+                    Placement="Placement.Bottom">
+            <MudChip T="string"
+                     Color="@(LayoutState.IsApiConnected ? Color.Success : Color.Error)"
+                     Variant="Variant.Filled"
+                     Size="Size.Small"
+                     Icon="@(LayoutState.IsApiConnected
+                                 ? Icons.Material.Filled.CloudDone
+                                 : Icons.Material.Filled.CloudOff)"
+                     Class="mr-1">
+                @(LayoutState.IsApiConnected ? "Connected" : "Offline")
+            </MudChip>
+        </MudTooltip>
+
+        @* Dark / light mode toggle *@
+        <MudTooltip Text="@(LayoutState.IsDarkMode ? "Switch to light mode" : "Switch to dark mode")"
+                    Placement="Placement.Bottom">
+            <MudIconButton Icon="@(LayoutState.IsDarkMode
+                                       ? Icons.Material.Filled.LightMode
+                                       : Icons.Material.Filled.DarkMode)"
+                           Color="Color.Inherit"
+                           OnClick="@ToggleDarkModeAsync" />
+        </MudTooltip>
+
+    </MudAppBar>
+
+    @* ── Drawer ────────────────────────────────────────────────────────────── *@
+    @* Responsive: persistent + content-shifting on md+, temporary overlay on sm- *@
+    <MudDrawer @bind-Open="_drawerOpen"
+               Variant="DrawerVariant.Responsive"
+               Breakpoint="Breakpoint.Md"
+               ClipMode="DrawerClipMode.Always"
+               Elevation="0">
+
+        <MudDrawerHeader Class="py-4">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                <MudIcon Icon="@Icons.Material.Filled.MonitorHeart"
+                         Color="Color.Primary"
+                         Size="Size.Medium" />
+                <div>
+                    <MudText Typo="Typo.subtitle1" Style="font-weight:700; line-height:1.2">
+                        ADF Monitor
+                    </MudText>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                        Agent Dashboard
+                    </MudText>
+                </div>
+            </MudStack>
+        </MudDrawerHeader>
+
+        <MudDivider />
+
+        <NavMenu PendingCount="@LayoutState.PendingApprovalCount" />
+
+    </MudDrawer>
+
+    @* ── Main content ─────────────────────────────────────────────────────── *@
+    <MudMainContent>
+        <OfflineBanner />
+        <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="pt-6 pb-10">
+            @Body
+        </MudContainer>
+    </MudMainContent>
+
+</MudLayout>
+
+@code {
+    private bool _drawerOpen = true;
+    private CancellationTokenSource _cts = new();
+    private int _tickCount;
+
+    // -------------------------------------------------------------------------
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Restore persisted display preferences saved by Settings → Display tab.
+        try
+        {
+            var darkRaw     = await JS.InvokeAsync<string?>("localStorage.getItem", "adf:settings:darkMode");
+            var intervalRaw = await JS.InvokeAsync<string?>("localStorage.getItem", "adf:settings:refreshInterval");
+
+            if (darkRaw is not null && bool.TryParse(darkRaw, out var dark))
+                LayoutState.SetDarkMode(dark);
+
+            if (intervalRaw is not null && int.TryParse(intervalRaw, out var interval) && interval > 0)
+                LayoutState.SetRefreshInterval(interval);
+        }
+        catch { /* localStorage unavailable (e.g. private browsing restriction) — use defaults */ }
+
+        await RefreshPendingCountAsync();
+        _ = RunTickLoopAsync();
+    }
+
+    private void ToggleDrawer() => _drawerOpen = !_drawerOpen;
+
+    private async Task ToggleDarkModeAsync()
+    {
+        LayoutState.ToggleDarkMode();
+        try
+        {
+            await JS.InvokeVoidAsync(
+                "localStorage.setItem",
+                "adf:settings:darkMode",
+                LayoutState.IsDarkMode.ToString().ToLowerInvariant());
+        }
+        catch { /* ignore storage errors */ }
+    }
+
+    // -------------------------------------------------------------------------
+    // "Last updated" display
+    // -------------------------------------------------------------------------
+
+    private string LastUpdatedText
+    {
+        get
+        {
+            if (LayoutState.LastRefreshed is not { } refreshed)
+                return "Last updated: never";
+
+            var elapsed = DateTime.UtcNow - refreshed;
+
+            var ago = elapsed.TotalSeconds switch
+            {
+                < 5    => "just now",
+                < 60   => $"{(int)elapsed.TotalSeconds}s ago",
+                < 3600 => $"{(int)elapsed.TotalMinutes}m ago",
+                _      => refreshed.ToLocalTime().ToString("HH:mm"),
+            };
+
+            return $"Last updated: {ago}";
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Tick loop: updates the "X seconds ago" label every second,
+    // re-fetches pending count every 30 seconds.
+    // -------------------------------------------------------------------------
+
+    private async Task RunTickLoopAsync()
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
+        try
+        {
+            while (await timer.WaitForNextTickAsync(_cts.Token))
+            {
+                _tickCount++;
+
+                var interval = LayoutState.RefreshIntervalSeconds;
+                if (interval > 0 && _tickCount % interval == 0)
+                    await RefreshPendingCountAsync();
+
+                // Rerender to advance the "X seconds ago" counter.
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException) { /* component disposed */ }
+    }
+
+    private async Task RefreshPendingCountAsync()
+    {
+        try
+        {
+            var pending = await ApiClient.GetPendingApprovalsAsync(_cts.Token);
+            LayoutState.SetPendingApprovalCount(pending.Count);
+            LayoutState.SetApiConnected(true);
+            LayoutState.NotifyDataRefreshed();
+        }
+        catch (Exception) when (!_cts.IsCancellationRequested)
+        {
+            LayoutState.SetApiConnected(false);
+        }
+    }
+
+    // -------------------------------------------------------------------------
+
+    public async ValueTask DisposeAsync()
+    {
+        await _cts.CancelAsync();
+        _cts.Dispose();
+    }
+}
