@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>dotnet-AdfAgentMonitor.Worker-0343e407-3ffb-4970-97a4-bd3882a2e8c2</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Hangfire.Core" Version="1.*" />
+    <PackageReference Include="Hangfire.NetCore" Version="1.*" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.11" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AdfAgentMonitor.Core\AdfAgentMonitor.Core.csproj" />
+    <ProjectReference Include="..\AdfAgentMonitor.Agents\AdfAgentMonitor.Agents.csproj" />
+    <ProjectReference Include="..\AdfAgentMonitor.Infrastructure\AdfAgentMonitor.Infrastructure.csproj" />
+  </ItemGroup>
+</Project>

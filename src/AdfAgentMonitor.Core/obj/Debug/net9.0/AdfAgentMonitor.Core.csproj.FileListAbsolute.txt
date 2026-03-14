@@ -1,0 +1,11 @@
+D:\NewProjects\Agents\AdfAgentMonitor\src\AdfAgentMonitor.Core\bin\Debug\net9.0\AdfAgentMonitor.Core.deps.json
+D:\NewProjects\Agents\AdfAgentMonitor\src\AdfAgentMonitor.Core\bin\Debug\net9.0\AdfAgentMonitor.Core.dll
+D:\NewProjects\Agents\AdfAgentMonitor\src\AdfAgentMonitor.Core\bin\Debug\net9.0\AdfAgentMonitor.Core.pdb
+D:\NewProjects\Agents\AdfAgentMonitor\src\AdfAgentMonitor.Core\obj\Debug\net9.0\AdfAgentMonitor.Core.GeneratedMSBuildEditorConfig.editorconfig
+D:\NewProjects\Agents\AdfAgentMonitor\src\AdfAgentMonitor.Core\obj\Debug\net9.0\AdfAgentMonitor.Core.AssemblyInfoInputs.cache
+D:\NewProjects\Agents\AdfAgentMonitor\src\AdfAgentMonitor.Core\obj\Debug\net9.0\AdfAgentMonitor.Core.AssemblyInfo.cs
+D:\NewProjects\Agents\AdfAgentMonitor\src\AdfAgentMonitor.Core\obj\Debug\net9.0\AdfAgentMonitor.Core.csproj.CoreCompileInputs.cache
+D:\NewProjects\Agents\AdfAgentMonitor\src\AdfAgentMonitor.Core\obj\Debug\net9.0\AdfAgentMonitor.Core.dll
+D:\NewProjects\Agents\AdfAgentMonitor\src\AdfAgentMonitor.Core\obj\Debug\net9.0\refint\AdfAgentMonitor.Core.dll
+D:\NewProjects\Agents\AdfAgentMonitor\src\AdfAgentMonitor.Core\obj\Debug\net9.0\AdfAgentMonitor.Core.pdb
+D:\NewProjects\Agents\AdfAgentMonitor\src\AdfAgentMonitor.Core\obj\Debug\net9.0\ref\AdfAgentMonitor.Core.dll

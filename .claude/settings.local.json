@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd \"D:/NewProjects/Agents/AdfAgentMonitor\" && dotnet add src/AdfAgentMonitor.Worker/AdfAgentMonitor.Worker.csproj reference src/AdfAgentMonitor.Core/AdfAgentMonitor.Core.csproj src/AdfAgentMonitor.Agents/AdfAgentMonitor.Agents.csproj src/AdfAgentMonitor.Infrastructure/AdfAgentMonitor.Infrastructure.csproj && dotnet add src/AdfAgentMonitor.Api/AdfAgentMonitor.Api.csproj reference src/AdfAgentMonitor.Core/AdfAgentMonitor.Core.csproj src/AdfAgentMonitor.Agents/AdfAgentMonitor.Agents.csproj src/AdfAgentMonitor.Infrastructure/AdfAgentMonitor.Infrastructure.csproj)",
+      "Bash(cd \"D:/NewProjects/Agents/AdfAgentMonitor\" && dotnet build --nologo -v q 2>&1 | tail -5)"
+    ]
+  }
+}

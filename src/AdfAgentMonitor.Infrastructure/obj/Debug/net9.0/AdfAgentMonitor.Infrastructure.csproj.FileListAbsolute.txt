@@ -1,0 +1,17 @@
+D:\NewProjects\Agents\AdfAgentMonitor\src\AdfAgentMonitor.Infrastructure\bin\Debug\net9.0\AdfAgentMonitor.Infrastructure.deps.json
+D:\NewProjects\Agents\AdfAgentMonitor\src\AdfAgentMonitor.Infrastructure\bin\Debug\net9.0\AdfAgentMonitor.Infrastructure.dll
+D:\NewProjects\Agents\AdfAgentMonitor\src\AdfAgentMonitor.Infrastructure\bin\Debug\net9.0\AdfAgentMonitor.Infrastructure.pdb
+D:\NewProjects\Agents\AdfAgentMonitor\src\AdfAgentMonitor.Infrastructure\bin\Debug\net9.0\AdfAgentMonitor.Core.dll
+D:\NewProjects\Agents\AdfAgentMonitor\src\AdfAgentMonitor.Infrastructure\bin\Debug\net9.0\AdfAgentMonitor.Core.pdb
+D:\NewProjects\Agents\AdfAgentMonitor\src\AdfAgentMonitor.Infrastructure\obj\Debug\net9.0\AdfAgentMonitor.Infrastructure.csproj.AssemblyReference.cache
+D:\NewProjects\Agents\AdfAgentMonitor\src\AdfAgentMonitor.Infrastructure\obj\Debug\net9.0\AdfAgentMonitor.Infrastructure.GeneratedMSBuildEditorConfig.editorconfig
+D:\NewProjects\Agents\AdfAgentMonitor\src\AdfAgentMonitor.Infrastructure\obj\Debug\net9.0\AdfAgentMonitor.Infrastructure.AssemblyInfoInputs.cache
+D:\NewProjects\Agents\AdfAgentMonitor\src\AdfAgentMonitor.Infrastructure\obj\Debug\net9.0\AdfAgentMonitor.Infrastructure.AssemblyInfo.cs
+D:\NewProjects\Agents\AdfAgentMonitor\src\AdfAgentMonitor.Infrastructure\obj\Debug\net9.0\AdfAgentMonitor.Infrastructure.csproj.CoreCompileInputs.cache
+D:\NewProjects\Agents\AdfAgentMonitor\src\AdfAgentMonitor.Infrastructure\obj\Debug\net9.0\AdfAgent.BA35E109.Up2Date
+D:\NewProjects\Agents\AdfAgentMonitor\src\AdfAgentMonitor.Infrastructure\obj\Debug\net9.0\AdfAgentMonitor.Infrastructure.dll
+D:\NewProjects\Agents\AdfAgentMonitor\src\AdfAgentMonitor.Infrastructure\obj\Debug\net9.0\refint\AdfAgentMonitor.Infrastructure.dll
+D:\NewProjects\Agents\AdfAgentMonitor\src\AdfAgentMonitor.Infrastructure\obj\Debug\net9.0\AdfAgentMonitor.Infrastructure.pdb
+D:\NewProjects\Agents\AdfAgentMonitor\src\AdfAgentMonitor.Infrastructure\obj\Debug\net9.0\ref\AdfAgentMonitor.Infrastructure.dll
+D:\NewProjects\Agents\AdfAgentMonitor\src\AdfAgentMonitor.Infrastructure\bin\Debug\net9.0\AdfAgentMonitor.Infrastructure.runtimeconfig.json
+D:\NewProjects\Agents\AdfAgentMonitor\src\AdfAgentMonitor.Infrastructure\obj\Debug\net9.0\AdfAgentMonitor.Infrastructure.genruntimeconfig.cache
