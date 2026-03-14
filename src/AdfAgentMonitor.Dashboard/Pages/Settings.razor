@@ -189,10 +189,10 @@
                             </MudText>
                         </MudStack>
                         <MudSwitch T="bool"
-                                   @bind-Value="_notifyOnFailure"
+                                   Value="_notifyOnFailure"
+                                   ValueChanged="@((bool v) => { _notifyOnFailure = v; _ = SaveNotificationsAsync(); })"
                                    Color="Color.Primary"
-                                   Disabled="@(!_notificationsEnabled)"
-                                   ValueChanged="@((_) => _ = SaveNotificationsAsync())" />
+                                   Disabled="@(!_notificationsEnabled)" />
                     </MudStack>
                 </MudPaper>
 
@@ -208,10 +208,10 @@
                             </MudText>
                         </MudStack>
                         <MudSwitch T="bool"
-                                   @bind-Value="_notifyOnApproval"
+                                   Value="_notifyOnApproval"
+                                   ValueChanged="@((bool v) => { _notifyOnApproval = v; _ = SaveNotificationsAsync(); })"
                                    Color="Color.Primary"
-                                   Disabled="@(!_notificationsEnabled)"
-                                   ValueChanged="@((_) => _ = SaveNotificationsAsync())" />
+                                   Disabled="@(!_notificationsEnabled)" />
                     </MudStack>
                 </MudPaper>
 
@@ -227,10 +227,10 @@
                             </MudText>
                         </MudStack>
                         <MudSwitch T="bool"
-                                   @bind-Value="_notifyOnRemediation"
+                                   Value="_notifyOnRemediation"
+                                   ValueChanged="@((bool v) => { _notifyOnRemediation = v; _ = SaveNotificationsAsync(); })"
                                    Color="Color.Primary"
-                                   Disabled="@(!_notificationsEnabled)"
-                                   ValueChanged="@((_) => _ = SaveNotificationsAsync())" />
+                                   Disabled="@(!_notificationsEnabled)" />
                     </MudStack>
                 </MudPaper>
 

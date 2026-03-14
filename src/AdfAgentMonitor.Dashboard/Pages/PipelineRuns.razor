@@ -312,24 +312,24 @@
                     <div style="background:var(--mud-palette-background-gray); border-top:1px solid var(--mud-palette-divider)">
                         <MudExpansionPanels Elevation="0" Class="ma-0" Style="background:transparent">
 
-                            @if (!string.IsNullOrWhiteSpace(run.DiagnosisSummary))
+                            @if (!string.IsNullOrWhiteSpace(run.Item.DiagnosisSummary))
                             {
                                 <MudExpansionPanel Text="Diagnosis Summary"
                                                    IsInitiallyExpanded="true"
                                                    Dense="true">
                                     <MudText Typo="Typo.body2" Class="py-1">
-                                        @run.DiagnosisSummary
+                                        @run.Item.DiagnosisSummary
                                     </MudText>
                                 </MudExpansionPanel>
                             }
 
-                            @if (!string.IsNullOrWhiteSpace(run.RemediationPlan))
+                            @if (!string.IsNullOrWhiteSpace(run.Item.RemediationPlan))
                             {
                                 <MudExpansionPanel Text="Remediation Plan" Dense="true">
                                     <MudText Typo="Typo.caption"
                                              Style="font-family:monospace; white-space:pre-wrap; word-break:break-all; font-size:0.7rem"
                                              Class="py-1">
-                                        @run.RemediationPlan
+                                        @run.Item.RemediationPlan
                                     </MudText>
                                 </MudExpansionPanel>
                             }
@@ -361,7 +361,8 @@
 
 @* ── Detail drawer ───────────────────────────────────────────────────────── *@
 
-<MudDrawer @bind-Open="_drawerOpen"
+<MudDrawer Open="_drawerOpen"
+           OpenChanged="@(v => _drawerOpen = v)"
            Anchor="Anchor.End"
            Variant="DrawerVariant.Temporary"
            Width="480px"
@@ -632,13 +633,10 @@
     private static string RelativeTime(DateTimeOffset t)
     {
         var elapsed = DateTimeOffset.UtcNow - t;
-        return elapsed.TotalSeconds switch
-        {
-            < 60    => $"{(int)elapsed.TotalSeconds}s ago",
-            < 3600  => $"{(int)elapsed.TotalMinutes}m ago",
-            < 86400 => $"{(int)elapsed.TotalHours}h ago",
-            _       => t.ToLocalTime().ToString("MMM d HH:mm"),
-        };
+        if      (elapsed.TotalSeconds < 60)    return $"{(int)elapsed.TotalSeconds}s ago";
+        else if (elapsed.TotalSeconds < 3600)  return $"{(int)elapsed.TotalMinutes}m ago";
+        else if (elapsed.TotalSeconds < 86400) return $"{(int)elapsed.TotalHours}h ago";
+        else                                   return t.ToLocalTime().ToString("MMM d HH:mm");
     }
 
     // ──────────────────────────────────────────────────────────────────────────

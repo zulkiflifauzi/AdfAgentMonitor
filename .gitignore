@@ -1,0 +1,30 @@
+# Build outputs
+bin/
+obj/
+
+# User-specific files
+*.user
+*.suo
+.vs/
+.vscode/
+*.DotSettings.user
+
+# dotnet user secrets
+**/secrets.json
+
+# NuGet
+*.nupkg
+.nuget/
+
+# Rider
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Blazor WASM publish
+**/wwwroot/_framework/
+
+# Claude Code local settings
+.claude/settings.local.json

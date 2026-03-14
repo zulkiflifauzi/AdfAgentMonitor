@@ -1,3 +1,5 @@
+using AdfAgentMonitor.Core.Enums;
+
 namespace AdfAgentMonitor.Dashboard.Services;
 
 public sealed class RunFilter

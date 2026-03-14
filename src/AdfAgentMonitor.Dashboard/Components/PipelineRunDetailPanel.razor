@@ -167,7 +167,7 @@
                                             <MudText Typo="Typo.caption" Color="Color.Secondary">DiagnosticsAgent</MudText>
                                             @if (Run.DiagnosisCode.HasValue)
                                             {
-                                                @{ var (_, dcLabel) = DiagnosisChip(Run.DiagnosisCode.Value); }
+                                                var (_, dcLabel) = DiagnosisChip(Run.DiagnosisCode.Value);
                                                 <MudText Typo="Typo.caption">@dcLabel</MudText>
                                             }
                                         </MudStack>
@@ -180,26 +180,24 @@
                                  || !string.IsNullOrWhiteSpace(Run.ApprovalStatus)
                                  || Run.TeamsMessageId is not null)
                             {
-                                @{
-                                    var approvalColor = Run.ApprovalStatus switch
-                                    {
-                                        "Approved" => Color.Success,
-                                        "Rejected" => Color.Error,
-                                        _          => Color.Warning,
-                                    };
-                                    var approvalIcon = Run.ApprovalStatus switch
-                                    {
-                                        "Approved" => Icons.Material.Filled.CheckCircle,
-                                        "Rejected" => Icons.Material.Filled.Cancel,
-                                        _          => Icons.Material.Filled.NotificationsActive,
-                                    };
-                                    var approvalLabel = Run.ApprovalStatus switch
-                                    {
-                                        "Approved" => "Approved",
-                                        "Rejected" => "Rejected",
-                                        _          => "Awaiting Approval",
-                                    };
-                                }
+                                var approvalColor = Run.ApprovalStatus switch
+                                {
+                                    "Approved" => Color.Success,
+                                    "Rejected" => Color.Error,
+                                    _          => Color.Warning,
+                                };
+                                var approvalIcon = Run.ApprovalStatus switch
+                                {
+                                    "Approved" => Icons.Material.Filled.CheckCircle,
+                                    "Rejected" => Icons.Material.Filled.Cancel,
+                                    _          => Icons.Material.Filled.NotificationsActive,
+                                };
+                                var approvalLabel = Run.ApprovalStatus switch
+                                {
+                                    "Approved" => "Approved",
+                                    "Rejected" => "Rejected",
+                                    _          => "Awaiting Approval",
+                                };
                                 <MudTimelineItem Color="@approvalColor"
                                                  Icon="@approvalIcon"
                                                  Size="Size.Small">
@@ -217,13 +215,11 @@
                             @* Step 4 — Fix applied *@
                             @if (Run.Status is PipelineRunStatus.Remediating or PipelineRunStatus.Resolved)
                             {
-                                @{
-                                    var fixDone  = Run.Status == PipelineRunStatus.Resolved;
-                                    var fixColor = fixDone ? Color.Success : Color.Warning;
-                                    var fixIcon  = fixDone
-                                        ? Icons.Material.Filled.CheckCircle
-                                        : Icons.Material.Filled.BuildCircle;
-                                }
+                                var fixDone  = Run.Status == PipelineRunStatus.Resolved;
+                                var fixColor = fixDone ? Color.Success : Color.Warning;
+                                var fixIcon  = fixDone
+                                    ? Icons.Material.Filled.CheckCircle
+                                    : Icons.Material.Filled.BuildCircle;
                                 <MudTimelineItem Color="@fixColor" Icon="@fixIcon" Size="Size.Small">
                                     <ItemContent>
                                         <MudStack Spacing="0" Class="pb-3">
@@ -274,7 +270,7 @@
                         @* ── Diagnosis code — large chip ─────────────────── *@
                         @if (Run.DiagnosisCode.HasValue)
                         {
-                            @{ var (dcc, dcl) = DiagnosisChip(Run.DiagnosisCode.Value); }
+                            var (dcc, dcl) = DiagnosisChip(Run.DiagnosisCode.Value);
                             <div>
                                 <MudText Typo="Typo.overline" Color="Color.Secondary" Class="mb-1">
                                     Diagnosis Code
@@ -338,7 +334,7 @@
                         @* ── Risk level — MudRating ───────────────────────── *@
                         @if (Run.RemediationRisk.HasValue)
                         {
-                            @{ var (rval, rcol, rlabel) = RiskRating(Run.RemediationRisk.Value); }
+                            var (rval, rcol, rlabel) = RiskRating(Run.RemediationRisk.Value);
                             <div>
                                 <MudText Typo="Typo.overline" Color="Color.Secondary" Class="mb-1">
                                     Remediation Risk

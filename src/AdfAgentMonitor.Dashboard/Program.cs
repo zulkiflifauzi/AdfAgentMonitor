@@ -24,7 +24,7 @@ builder.Services.AddTransient<SettingsOverridingHandler>();
 builder.Services.AddScoped<NotificationService>();
 
 // Bind ApiClientSettings from root configuration keys (ApiBaseUrl, ApiKey).
-builder.Services.Configure<ApiClientSettings>(builder.Configuration);
+builder.Services.Configure<ApiClientSettings>((Microsoft.Extensions.Configuration.IConfiguration)builder.Configuration);
 
 // Typed HttpClient: base address and X-Api-Key default header are set once here
 // so MonitorApiClient itself stays free of configuration concerns.

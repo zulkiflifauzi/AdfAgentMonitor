@@ -218,7 +218,8 @@
 
 @* ── Run detail drawer ───────────────────────────────────────────────────── *@
 
-<MudDrawer @bind-Open="_detailOpen"
+<MudDrawer Open="_detailOpen"
+           OpenChanged="@(v => _detailOpen = v)"
            Anchor="Anchor.End"
            Variant="DrawerVariant.Temporary"
            Width="480px"
@@ -431,13 +432,10 @@
     private static string RelativeTime(DateTimeOffset t)
     {
         var elapsed = DateTimeOffset.UtcNow - t;
-        return elapsed.TotalSeconds switch
-        {
-            < 60    => $"{(int)elapsed.TotalSeconds}s ago",
-            < 3600  => $"{(int)elapsed.TotalMinutes}m ago",
-            < 86400 => $"{(int)elapsed.TotalHours}h ago",
-            _       => t.ToLocalTime().ToString("MMM d HH:mm"),
-        };
+        if      (elapsed.TotalSeconds < 60)    return $"{(int)elapsed.TotalSeconds}s ago";
+        else if (elapsed.TotalSeconds < 3600)  return $"{(int)elapsed.TotalMinutes}m ago";
+        else if (elapsed.TotalSeconds < 86400) return $"{(int)elapsed.TotalHours}h ago";
+        else                                   return t.ToLocalTime().ToString("MMM d HH:mm");
     }
 
     // ──────────────────────────────────────────────────────────────────────────
@@ -478,7 +476,7 @@
     {
         <MudItem xs="12" sm="6" lg="3">
             <MudPaper Elevation="1" Class="pa-5" Style="height:100%">
-                <MudStack Row="true" AlignItems="AlignItems.FlexStart" Justify="Justify.SpaceBetween">
+                <MudStack Row="true" AlignItems="AlignItems.Start" Justify="Justify.SpaceBetween">
 
                     <MudStack Spacing="1" Style="flex:1; min-width:0">
                         <MudText Typo="Typo.overline" Color="Color.Secondary"

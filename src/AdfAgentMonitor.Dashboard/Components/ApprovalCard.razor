@@ -21,7 +21,7 @@
 
         <MudCardHeader Style="padding-bottom:8px">
             <CardHeaderContent>
-                <MudStack Row="true" AlignItems="AlignItems.FlexStart"
+                <MudStack Row="true" AlignItems="AlignItems.Start"
                           Justify="Justify.SpaceBetween" Class="gap-2 flex-wrap">
 
                     <MudStack Spacing="0" Style="min-width:0; flex:1; overflow:hidden">
@@ -36,7 +36,7 @@
 
                     @if (Run.RemediationRisk.HasValue)
                     {
-                        @{ var (rc, rl) = RiskChip(Run.RemediationRisk.Value); }
+                        var (rc, rl) = RiskChip(Run.RemediationRisk.Value);
                         <MudChip T="string" Color="@rc" Size="Size.Small"
                                  Variant="Variant.Outlined" Style="flex-shrink:0">
                             @rl
@@ -256,12 +256,9 @@
     private static string RelativeTime(DateTimeOffset t)
     {
         var elapsed = DateTimeOffset.UtcNow - t;
-        return elapsed.TotalSeconds switch
-        {
-            < 60    => "just now",
-            < 3600  => $"{(int)elapsed.TotalMinutes}m ago",
-            < 86400 => $"{(int)elapsed.TotalHours}h ago",
-            _       => t.ToLocalTime().ToString("MMM d · HH:mm"),
-        };
+        if      (elapsed.TotalSeconds < 60)    return "just now";
+        else if (elapsed.TotalSeconds < 3600)  return $"{(int)elapsed.TotalMinutes}m ago";
+        else if (elapsed.TotalSeconds < 86400) return $"{(int)elapsed.TotalHours}h ago";
+        else                                   return t.ToLocalTime().ToString("MMM d · HH:mm");
     }
 }

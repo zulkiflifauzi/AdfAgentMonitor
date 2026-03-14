@@ -39,13 +39,13 @@
 
             @* Live mode toggle *@
             <MudTooltip Text="@(_liveMode ? "Live mode on — polling every 5 s" : "Enable live mode")">
-                <MudToggleIconButton @bind-Toggled="_liveMode"
+                <MudToggleIconButton Toggled="_liveMode"
+                                     ToggledChanged="OnLiveModeChangedAsync"
                                      Icon="@Icons.Material.Filled.PauseCircle"
                                      ToggledIcon="@Icons.Material.Filled.PlayCircle"
                                      Color="Color.Default"
                                      ToggledColor="Color.Success"
-                                     Size="Size.Small"
-                                     ToggledChanged="OnLiveModeChangedAsync" />
+                                     Size="Size.Small" />
             </MudTooltip>
 
             @* Refresh *@

@@ -156,13 +156,11 @@
 
             var elapsed = DateTime.UtcNow - refreshed;
 
-            var ago = elapsed.TotalSeconds switch
-            {
-                < 5    => "just now",
-                < 60   => $"{(int)elapsed.TotalSeconds}s ago",
-                < 3600 => $"{(int)elapsed.TotalMinutes}m ago",
-                _      => refreshed.ToLocalTime().ToString("HH:mm"),
-            };
+            string ago;
+            if      (elapsed.TotalSeconds < 5)    ago = "just now";
+            else if (elapsed.TotalSeconds < 60)   ago = $"{(int)elapsed.TotalSeconds}s ago";
+            else if (elapsed.TotalSeconds < 3600) ago = $"{(int)elapsed.TotalMinutes}m ago";
+            else                                   ago = refreshed.ToLocalTime().ToString("HH:mm");
 
             return $"Last updated: {ago}";
         }

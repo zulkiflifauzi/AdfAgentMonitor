@@ -56,21 +56,21 @@ public static class AppTheme
 
         Typography = new Typography
         {
-            Default = new DefaultTypography
+            Default = new Default
             {
                 FontFamily = ["Roboto", "sans-serif"],
             },
-            H4 = new H4Typography
+            H4 = new H4
             {
-                FontWeight = "600",
+                FontWeight = 600,
             },
-            H5 = new H5Typography
+            H5 = new H5
             {
-                FontWeight = "600",
+                FontWeight = 600,
             },
-            H6 = new H6Typography
+            H6 = new H6
             {
-                FontWeight = "600",
+                FontWeight = 600,
             },
         },
 
