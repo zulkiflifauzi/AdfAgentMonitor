@@ -115,7 +115,7 @@ The shared kernel. Zero external NuGet dependencies. Everything else depends on 
 - `IPipelineRunStateRepository` — CRUD + state-transition queries
 - `IAuditRepository` — append-only write
 - `IAdfService` — ADF run queries and rerun/cancel commands
-- `IEmailNotifierService` — send HTML notification email to all configured recipients; send outcome email after approval decision
+- `IEmailNotifierService` — send HTML notification email to all configured recipients; send outcome email after approval decision; send a one-off test email and return `(Success, Message)`
 - `INotificationSettingsRepository` — read/write the recipient email list from the `NotificationSettings` table
 - `IEmailSettingsOverrideRepository` — read/write operator SMTP overrides from the `EmailSettingsOverrides` table
 - `IEncryptionService` — encrypt/decrypt sensitive strings; implemented via ASP.NET Core Data Protection API
@@ -288,7 +288,7 @@ Dashboard/
 │   ├── Runs.razor           # Filterable run list                 (@page "/runs")
 │   ├── Approvals.razor      # Pending approval queue              (@page "/approvals")
 │   ├── AgentActivity.razor  # Agent activity timeline + live mode (@page "/activity")
-│   └── Settings.razor       # Connection / Notifications / Display (@page "/settings")
+│   └── Settings.razor       # Connection / Notifications / Email / Display (@page "/settings")
 ├── Components/
 │   ├── PipelineRunDetailPanel.razor  # Slide-out details panel
 │   ├── ApprovalCard.razor            # Single approval action card
@@ -316,7 +316,7 @@ Dashboard/
 | `/runs` | `Runs.razor` | Full filterable/sortable run list |
 | `/approvals` | `Approvals.razor` | Pending-approval queue with Approve / Reject actions |
 | `/activity` | `AgentActivity.razor` | Agent activity timeline; live-mode auto-prepends new entries |
-| `/settings` | `Settings.razor` | Connection, Notifications, and Display settings |
+| `/settings` | `Settings.razor` | Connection, Notifications, Email, and Display settings |
 
 **Key Services:**
 
@@ -364,8 +364,12 @@ All endpoints require the `X-Api-Key` header. Responses use camelCase JSON with 
 | `GET` | `/api/health` | X-Api-Key | — | `{ status: "ok", timestamp }` |
 | `GET` | `/api/settings/notifications` | X-Api-Key | — | `{ recipientEmails: string[] }` |
 | `PUT` | `/api/settings/notifications` | X-Api-Key | body: `{ "recipientEmails": ["…"] }` | `{ recipientEmails: string[] }` |
+| `GET` | `/api/settings/email` | X-Api-Key | — | `EmailSettingsResponse` (effective settings; `hasPassword` bool, never the password itself) |
+| `PUT` | `/api/settings/email` | X-Api-Key | body: `UpdateEmailSettingsRequest` (null field = keep appsettings default) | `EmailSettingsResponse` |
+| `DELETE` | `/api/settings/email` | X-Api-Key | — | 204 No Content |
+| `POST` | `/api/settings/email/test` | X-Api-Key | body: `{ "recipientEmail": "…" }` | `{ success: bool, message: string }` |
 
-**CORS:** The Api reads allowed origins from `Cors:AllowedOrigins` in `appsettings.json`. Development defaults: `http://localhost:5071`, `https://localhost:7071`, `http://localhost:5000`, `https://localhost:7000`.
+**CORS:** The Api reads allowed origins from `Cors:AllowedOrigins` in `appsettings.json`. Allowed methods: `GET`, `POST`, `PUT`, `DELETE`. Development defaults: `http://localhost:5071`, `https://localhost:7071`, `http://localhost:5000`, `https://localhost:7000`.
 
 ---
 

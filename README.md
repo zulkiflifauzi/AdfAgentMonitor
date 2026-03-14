@@ -40,10 +40,13 @@ Azure Data Factory
                    outcome email             rejection email
 
 Dashboard (Blazor WASM PWA)
-  ├── GET /api/runs, /api/runs/summary  (stat cards + run list)
+  ├── GET /api/runs, /api/runs/summary        (stat cards + run list)
   ├── GET /api/runs/{id}, /api/runs/{id}/logs
-  ├── GET /api/activity                 (agent activity timeline)
-  └── GET /api/health                   (connection test)
+  ├── GET /api/activity                       (agent activity timeline)
+  ├── GET /api/health                         (connection test)
+  ├── GET|PUT /api/settings/notifications     (recipient list)
+  ├── GET|PUT|DELETE /api/settings/email      (SMTP overrides)
+  └── POST /api/settings/email/test           (send test email)
 ```
 
 All agent-to-agent communication is via the shared `PipelineRunState` SQL table —
@@ -345,6 +348,19 @@ The service principal (or Managed Identity) needs:
    - `POST /api/approvals/{id}/approve` → State → `Remediating`; FixAgent re-runs; outcome email sent
 6. An operator clicks **Reject**
    - `POST /api/approvals/{id}/reject` → State → `Resolved`; no remediation; rejection outcome email sent
+
+---
+
+## Dashboard settings tabs
+
+| Tab | What it controls |
+|---|---|
+| **Connection** | API base URL and API key overrides (saved to `localStorage`); Test Connection button |
+| **Notifications** | Email recipient list (multiple addresses); browser notification permissions and per-event toggles |
+| **Email** | SMTP overrides stored in the database — host, port, STARTTLS, auth credentials, from address, dashboard base URL; **Send Test Email** to verify configuration without redeploying |
+| **Display** | Dark mode toggle; dashboard refresh interval |
+
+> **Email tab — Test Email:** Enter any address and click **Send Test**. The test uses the currently *saved* effective settings (appsettings + any DB overrides). Save your changes first before testing a new configuration.
 
 ---
 
