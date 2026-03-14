@@ -21,10 +21,10 @@ public class EmailNotifierService(
     {
         try
         {
-            var recipient = (await settingsRepo.GetAsync(ct)).RecipientEmail;
-            if (string.IsNullOrWhiteSpace(recipient))
+            var recipients = (await settingsRepo.GetAsync(ct)).RecipientEmailList;
+            if (recipients.Count == 0)
             {
-                logger.LogWarning("No notification recipient configured — skipping email for runId={RunId}.", state.PipelineRunId);
+                logger.LogWarning("No notification recipients configured — skipping email for runId={RunId}.", state.PipelineRunId);
                 return false;
             }
 
@@ -37,7 +37,7 @@ public class EmailNotifierService(
             };
 
             var body = BuildHtmlBody(state);
-            await SendAsync(recipient, subject, body, ct);
+            await SendAsync(recipients, subject, body, ct);
             return true;
         }
         catch (Exception ex)
@@ -51,12 +51,12 @@ public class EmailNotifierService(
     {
         try
         {
-            var recipient = (await settingsRepo.GetAsync(ct)).RecipientEmail;
-            if (string.IsNullOrWhiteSpace(recipient)) return;
+            var recipients = (await settingsRepo.GetAsync(ct)).RecipientEmailList;
+            if (recipients.Count == 0) return;
 
             var subject = $"[ADF Monitor] Pipeline approval {outcome}: {state.PipelineName}";
             var body    = BuildOutcomeHtml(state, outcome);
-            await SendAsync(recipient, subject, body, ct);
+            await SendAsync(recipients, subject, body, ct);
         }
         catch (Exception ex)
         {
@@ -66,11 +66,12 @@ public class EmailNotifierService(
 
     // -------------------------------------------------------------------------
 
-    private async Task SendAsync(string to, string subject, string htmlBody, CancellationToken ct)
+    private async Task SendAsync(IEnumerable<string> to, string subject, string htmlBody, CancellationToken ct)
     {
         var message = new MimeMessage();
         message.From.Add(new MailboxAddress(_cfg.FromName, _cfg.FromAddress));
-        message.To.Add(MailboxAddress.Parse(to));
+        foreach (var addr in to)
+            message.To.Add(MailboxAddress.Parse(addr));
         message.Subject = subject;
         message.Body    = new TextPart(MimeKit.Text.TextFormat.Html) { Text = htmlBody };
 

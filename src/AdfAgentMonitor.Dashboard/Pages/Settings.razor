@@ -137,29 +137,64 @@
         <MudTabPanel Text="Notifications" Icon="@Icons.Material.Filled.Notifications">
             <MudStack Spacing="4">
 
-                @* Email recipient *@
+                @* Email recipients *@
                 <MudPaper Elevation="0"
                           Style="border:1px solid var(--mud-palette-divider); border-radius:8px"
                           Class="pa-4">
                     <MudStack Spacing="3">
                         <MudStack Spacing="0">
-                            <MudText Typo="Typo.body1" Style="font-weight:600">Email notification recipient</MudText>
+                            <MudText Typo="Typo.body1" Style="font-weight:600">Email notification recipients</MudText>
                             <MudText Typo="Typo.caption" Color="Color.Secondary">
-                                Email address that receives pipeline failure and approval notifications.
+                                Email addresses that receive pipeline failure and approval notifications.
                             </MudText>
                         </MudStack>
-                        <MudTextField @bind-Value="_recipientEmail"
-                                      Label="Recipient Email"
-                                      Variant="Variant.Outlined"
-                                      Placeholder="ops-team@example.com"
-                                      InputType="InputType.Email"
-                                      Adornment="Adornment.Start"
-                                      AdornmentIcon="@Icons.Material.Filled.Email" />
+
+                        @* Current recipients as chips *@
+                        @if (_recipientEmails.Count > 0)
+                        {
+                            <MudStack Row="true" Spacing="1" Class="flex-wrap">
+                                @foreach (var email in _recipientEmails)
+                                {
+                                    <MudChip T="string"
+                                             Text="@email"
+                                             Color="Color.Primary"
+                                             Variant="Variant.Outlined"
+                                             OnClose="@(() => RemoveRecipient(email))"
+                                             CloseIcon="@Icons.Material.Filled.Close" />
+                                }
+                            </MudStack>
+                        }
+                        else
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">No recipients configured.</MudText>
+                        }
+
+                        @* Add new recipient *@
+                        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                            <MudTextField @bind-Value="_newRecipientEmail"
+                                          Label="Add Email"
+                                          Variant="Variant.Outlined"
+                                          Placeholder="ops-team@example.com"
+                                          InputType="InputType.Email"
+                                          Adornment="Adornment.Start"
+                                          AdornmentIcon="@Icons.Material.Filled.Email"
+                                          Margin="Margin.Dense"
+                                          Style="flex:1"
+                                          OnKeyDown="@OnAddEmailKeyDown" />
+                            <MudButton Variant="Variant.Outlined"
+                                       Color="Color.Primary"
+                                       StartIcon="@Icons.Material.Filled.Add"
+                                       OnClick="@AddRecipient"
+                                       Disabled="@string.IsNullOrWhiteSpace(_newRecipientEmail)">
+                                Add
+                            </MudButton>
+                        </MudStack>
+
                         <MudButton Variant="Variant.Filled"
                                    Color="Color.Primary"
                                    StartIcon="@Icons.Material.Filled.Save"
                                    Disabled="@_savingRecipient"
-                                   OnClick="@SaveRecipientAsync">
+                                   OnClick="@SaveRecipientsAsync">
                             @if (_savingRecipient) { <MudProgressCircular Indeterminate="true" Size="Size.Small" Class="mr-2" /><text>Saving…</text> }
                             else { <text>Save</text> }
                         </MudButton>
@@ -382,8 +417,9 @@
 
     // ── State — Notifications ─────────────────────────────────────────────────
 
-    private string _recipientEmail   = string.Empty;
-    private bool   _savingRecipient;
+    private List<string> _recipientEmails    = [];
+    private string       _newRecipientEmail  = string.Empty;
+    private bool         _savingRecipient;
 
     private string _notificationPermission = "default";
     private bool   _notificationsEnabled;
@@ -405,9 +441,9 @@
         _apiBaseUrl = await GetStoredAsync("adf:settings:apiBaseUrl") ?? string.Empty;
         _apiKey     = await GetStoredAsync("adf:settings:apiKey")     ?? string.Empty;
 
-        // Notifications — email recipient
-        try { _recipientEmail = await ApiClient.GetNotificationRecipientAsync(_cts.Token) ?? string.Empty; }
-        catch { _recipientEmail = string.Empty; }
+        // Notifications — email recipients
+        try { _recipientEmails = await ApiClient.GetNotificationRecipientsAsync(_cts.Token); }
+        catch { _recipientEmails = []; }
 
         // Notifications
         try { _notificationPermission = await JS.InvokeAsync<string>("adfNotifications.getPermission"); }
@@ -502,17 +538,36 @@
 
     // ── Notifications actions ─────────────────────────────────────────────────
 
-    private async Task SaveRecipientAsync()
+    private void AddRecipient()
+    {
+        var email = _newRecipientEmail.Trim();
+        if (string.IsNullOrWhiteSpace(email)) return;
+        if (!_recipientEmails.Contains(email, StringComparer.OrdinalIgnoreCase))
+            _recipientEmails.Add(email);
+        _newRecipientEmail = string.Empty;
+    }
+
+    private void RemoveRecipient(string email)
+    {
+        _recipientEmails.RemoveAll(e => string.Equals(e, email, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private async Task OnAddEmailKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") AddRecipient();
+    }
+
+    private async Task SaveRecipientsAsync()
     {
         _savingRecipient = true;
         try
         {
-            await ApiClient.SetNotificationRecipientAsync(_recipientEmail.Trim(), _cts.Token);
-            Snackbar.Add("Notification recipient saved.", Severity.Success);
+            await ApiClient.SetNotificationRecipientsAsync(_recipientEmails, _cts.Token);
+            Snackbar.Add("Notification recipients saved.", Severity.Success);
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Failed to save recipient: {ex.Message}", Severity.Error);
+            Snackbar.Add($"Failed to save recipients: {ex.Message}", Severity.Error);
         }
         finally
         {

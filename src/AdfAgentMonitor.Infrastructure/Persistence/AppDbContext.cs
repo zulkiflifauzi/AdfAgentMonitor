@@ -134,8 +134,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.ToTable("NotificationSettings");
             e.HasKey(x => x.Id);
             e.Property(x => x.Id).ValueGeneratedNever();
-            e.Property(x => x.RecipientEmail).HasMaxLength(256).IsRequired();
+            e.Property(x => x.RecipientEmails).HasMaxLength(2000).IsRequired();
             e.Property(x => x.UpdatedAt).IsRequired();
+            e.Ignore(x => x.RecipientEmailList);
         });
     }
 }

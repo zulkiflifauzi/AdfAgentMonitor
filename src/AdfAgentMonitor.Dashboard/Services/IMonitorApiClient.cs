@@ -47,15 +47,14 @@ public interface IMonitorApiClient
     Task<ConnectionTestResult> TestConnectionAsync(CancellationToken ct = default);
 
     /// <summary>
-    /// Returns the currently configured notification recipient email address,
-    /// or <c>null</c> if none is set.
+    /// Returns the currently configured notification recipient email addresses.
     /// </summary>
-    Task<string?> GetNotificationRecipientAsync(CancellationToken ct = default);
+    Task<List<string>> GetNotificationRecipientsAsync(CancellationToken ct = default);
 
     /// <summary>
-    /// Saves a new notification recipient email address via <c>PUT /api/settings/notifications</c>.
+    /// Saves the notification recipient email addresses via <c>PUT /api/settings/notifications</c>.
     /// </summary>
-    Task SetNotificationRecipientAsync(string email, CancellationToken ct = default);
+    Task SetNotificationRecipientsAsync(List<string> emails, CancellationToken ct = default);
 }
 
 /// <summary>Result of a Test Connection call.</summary>

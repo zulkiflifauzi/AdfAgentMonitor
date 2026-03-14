@@ -149,20 +149,22 @@ public class MonitorApiClient(HttpClient http) : IMonitorApiClient
         return (await response.Content.ReadFromJsonAsync<ActivityPage>(JsonOptions, ct))!;
     }
 
-    public async Task<string?> GetNotificationRecipientAsync(CancellationToken ct = default)
+    public async Task<List<string>> GetNotificationRecipientsAsync(CancellationToken ct = default)
     {
         var response = await http.GetAsync("api/settings/notifications", ct);
-        if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return null;
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return [];
         await EnsureSuccessAsync(response, ct);
         var obj = await response.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>(ct);
-        return obj.TryGetProperty("recipientEmail", out var prop) ? prop.GetString() : null;
+        if (obj.TryGetProperty("recipientEmails", out var prop) && prop.ValueKind == System.Text.Json.JsonValueKind.Array)
+            return [..prop.EnumerateArray().Select(e => e.GetString() ?? "").Where(s => s.Length > 0)];
+        return [];
     }
 
-    public async Task SetNotificationRecipientAsync(string email, CancellationToken ct = default)
+    public async Task SetNotificationRecipientsAsync(List<string> emails, CancellationToken ct = default)
     {
         var response = await http.PutAsJsonAsync(
             "api/settings/notifications",
-            new { RecipientEmail = email },
+            new { RecipientEmails = emails },
             JsonOptions,
             ct);
         await EnsureSuccessAsync(response, ct);

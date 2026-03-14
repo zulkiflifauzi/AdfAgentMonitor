@@ -22,7 +22,7 @@ public class NotificationSettingsRepository(AppDbContext db) : INotificationSett
         }
         else
         {
-            existing.RecipientEmail = settings.RecipientEmail;
+            existing.RecipientEmails = settings.RecipientEmails;
             existing.UpdatedAt      = DateTimeOffset.UtcNow;
         }
         await db.SaveChangesAsync(ct);

@@ -15,19 +15,26 @@ public class NotificationSettingsController(
     public async Task<IActionResult> Get(CancellationToken ct)
     {
         var s = await repo.GetAsync(ct);
-        return Ok(new { s.RecipientEmail });
+        return Ok(new { RecipientEmails = s.RecipientEmailList });
     }
 
     [HttpPut]
-    public async Task<IActionResult> Put([FromBody] UpdateRecipientRequest req, CancellationToken ct)
+    public async Task<IActionResult> Put([FromBody] UpdateRecipientsRequest req, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(req.RecipientEmail))
-            return BadRequest("RecipientEmail is required.");
+        var emails = (req.RecipientEmails ?? [])
+            .Where(e => !string.IsNullOrWhiteSpace(e))
+            .Select(e => e.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
-        var s = new NotificationSettings { RecipientEmail = req.RecipientEmail.Trim() };
+        if (emails.Count == 0)
+            return BadRequest("At least one recipient email is required.");
+
+        var s = new NotificationSettings();
+        s.RecipientEmailList = emails;
         await repo.SaveAsync(s, ct);
-        return Ok(new { s.RecipientEmail });
+        return Ok(new { RecipientEmails = s.RecipientEmailList });
     }
 }
 
-public record UpdateRecipientRequest(string RecipientEmail);
+public record UpdateRecipientsRequest(List<string>? RecipientEmails);
