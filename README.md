@@ -2,7 +2,7 @@
 
 A .NET 9 multi-agent system that monitors Azure Data Factory pipelines, diagnoses failures
 with Claude (via Semantic Kernel), auto-remediates where safe, and routes human approvals
-through Microsoft Teams Adaptive Cards.
+through a Blazor WebAssembly dashboard and Microsoft Teams Adaptive Cards.
 
 ---
 
