@@ -146,6 +146,16 @@ Notification **recipients** are not in config — they are stored in the databas
 | `Api:ApiKey` | `API__APIKEY` | Secret value expected in the `X-Api-Key` request header on all `/api/*` endpoints. Never commit to source control. |
 | `Cors:AllowedOrigins` | `CORS__ALLOWEDORIGINS__0`, `__1`, … | Array of origins allowed to call the Api from the browser (i.e. the Dashboard host URL). In `appsettings.Development.json` this defaults to the standard Blazor dev ports. |
 
+### DataProtection
+
+The SMTP password entered in **Settings → Email** is encrypted at rest using ASP.NET Core Data Protection (AES-256-CBC + HMACSHA256) before being stored in the database. The Worker and Api must share the same key ring to encrypt/decrypt the same value.
+
+| Key | Env var | Description |
+|---|---|---|
+| `DataProtection:KeysPath` | `DATAPROTECTION__KEYSPATH` | Optional path to a shared directory where Data Protection keys are persisted. When omitted, keys use the platform default (`%LOCALAPPDATA%\ASP.NET\DataProtection-Keys` on Windows). **Both Worker and Api must point to the same path in production.** |
+
+> **Production note:** For multi-machine or containerised deployments configure a shared key store — e.g. Azure Blob Storage (`PersistKeysToAzureBlobStorage`) or SQL Server (`PersistKeysToDbContext`). See the [Data Protection docs](https://learn.microsoft.com/aspnet/core/security/data-protection/configuration/overview) for options.
+
 ### Dashboard
 
 The Dashboard reads its API connection settings from `appsettings.json` (baked into the WASM bundle at publish time) and can be overridden at runtime via the **Settings → Connection** tab (values are persisted to `localStorage`).

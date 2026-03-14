@@ -117,6 +117,8 @@ The shared kernel. Zero external NuGet dependencies. Everything else depends on 
 - `IAdfService` — ADF run queries and rerun/cancel commands
 - `IEmailNotifierService` — send HTML notification email to all configured recipients; send outcome email after approval decision
 - `INotificationSettingsRepository` — read/write the recipient email list from the `NotificationSettings` table
+- `IEmailSettingsOverrideRepository` — read/write operator SMTP overrides from the `EmailSettingsOverrides` table
+- `IEncryptionService` — encrypt/decrypt sensitive strings; implemented via ASP.NET Core Data Protection API
 - `IApprovalStore` — read pending approvals by correlation ID
 
 **Enums**
@@ -198,8 +200,10 @@ Adapters for every external system. Implements all interfaces from Core. No busi
 - Exposes: `GetFailedRunsSinceAsync`, `GetRunLogsAsync`, `TriggerRunAsync`, `CancelRunAsync`.
 
 **Email Integration**
-- `EmailNotifierService` — MailKit SMTP client; builds HTML email bodies; reads all recipients from `INotificationSettingsRepository` and adds each to `message.To`; never throws.
+- `EmailNotifierService` — MailKit SMTP client; builds HTML email bodies; reads all recipients from `INotificationSettingsRepository` and adds each to `message.To`; merges DB overrides via `IEmailSettingsOverrideRepository`; never throws.
 - `NotificationSettingsRepository` — single-row upsert; stores recipients as a comma-separated string in `RecipientEmails`.
+- `EmailSettingsOverrideRepository` — single-row upsert for SMTP overrides; encrypts the `Password` field via `IEncryptionService` before writing and decrypts after reading.
+- `DataProtectionEncryptionService` — `IEncryptionService` implementation using ASP.NET Core Data Protection (`IDataProtectionProvider`), purpose string `AdfAgentMonitor.EmailPassword.v1`; returns `null` on `CryptographicException` so callers fall back to appsettings gracefully.
 - SMTP configuration lives in `Email:*` appsettings keys (`SmtpHost`, `SmtpPort`, `UseSsl`, `Username`, `Password`, `FromAddress`, `FromName`, `DashboardBaseUrl`).
 - Dev default points at `localhost:1025` (MailHog or any local SMTP relay).
 

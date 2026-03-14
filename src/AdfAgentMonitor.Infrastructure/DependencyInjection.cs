@@ -6,6 +6,7 @@ using AdfAgentMonitor.Core.Interfaces;
 using AdfAgentMonitor.Infrastructure.Persistence;
 using AdfAgentMonitor.Infrastructure.Services;
 using AdfAgentMonitor.Infrastructure.Settings;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -33,6 +34,23 @@ public static class DependencyInjection
         services.Configure<AnthropicSettings>(configuration.GetSection(AnthropicSettings.SectionName));
         services.Configure<HangfireSettings>(configuration.GetSection(HangfireSettings.SectionName));
         services.Configure<EmailSettings>(configuration.GetSection(EmailSettings.SectionName));
+
+        // ---------------------------------------------------------------------------
+        // Data Protection — AES-256 encryption for secrets stored in the database.
+        // Both Worker and Api must share the same key ring; configure
+        // DataProtection:KeysPath in appsettings.json to point to a shared directory
+        // (or an Azure Blob / SQL Server key store for production).
+        // ---------------------------------------------------------------------------
+
+        var dpBuilder = services
+            .AddDataProtection()
+            .SetApplicationName("AdfAgentMonitor");
+
+        var keysPath = configuration["DataProtection:KeysPath"];
+        if (!string.IsNullOrWhiteSpace(keysPath))
+            dpBuilder.PersistKeysToFileSystem(new System.IO.DirectoryInfo(keysPath));
+
+        services.AddSingleton<IEncryptionService, DataProtectionEncryptionService>();
 
         // ---------------------------------------------------------------------------
         // Azure credential — shared by ArmClient (ADF) and GraphServiceClient (Teams).
